@@ -1,0 +1,871 @@
+<p>[TOC]</p>
+
+<h1 id="linux---graphic-stack">Linux - Graphic stack</h1>
+
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/b8530def6ef20500472895d5ff25f45b.png" alt="img" /></p>
+
+<p>一个具有显存的虚拟GPU和ARMv8 CPU，有一个DMA可以在RAM和GPU显存之间来回搬运数据</p>
+
+<h2 id="0x00-env-setup">0x00 ENV setup</h2>
+
+<h3 id="1-编译kernel">1. 编译kernel</h3>
+
+<p>随便选择一版Linux源码</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 使用/arch/arm64/中的defconfig编译内核</span>
+<span class="c"># 这是一个aarch64通用的defconfig</span>
+<span class="nb">export </span><span class="nv">ARCH</span><span class="o">=</span>arm64
+<span class="nb">export </span><span class="nv">CROSS_COMPILE</span><span class="o">=</span>aarch64-linux-gnu-
+make defconfig
+make <span class="nt">-j12</span>
+
+<span class="c"># 如果没有export</span>
+<span class="c"># 需要两次命令中都有 ARCH=arm64 CROSS_COMPILE=aarch64-buildroot-linux-gnu-</span>
+<span class="c"># make ARCH=arm64 defconfig CROSS_COMPILE=aarch64-buildroot-linux-gnu-后直接make -j12会需要重复选择各种config</span>
+make <span class="nv">ARCH</span><span class="o">=</span>arm64 defconfig <span class="nv">CROSS_COMPILE</span><span class="o">=</span>aarch64-buildroot-linux-gnu-
+make <span class="nv">ARCH</span><span class="o">=</span>arm64 <span class="nv">CROSS_COMPILE</span><span class="o">=</span>aarch64-buildroot-linux-gnu- <span class="nt">-j12</span>
+</code></pre></div></div>
+
+<h3 id="2-编译qemu-system-aarch64">2. 编译qemu-system-aarch64</h3>
+
+<p>随便选择一版QEMU源码，尽量將./configure –target-list=aarch64-softmmu之后输出的各种支持都装上主要是virtio 图形 网络的一些支持包</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./configure <span class="nt">--target-list</span><span class="o">=</span>aarch64-softmmu
+<span class="nb">cd</span> ./build
+make <span class="nt">-j12</span> qemu-system-aarch64
+</code></pre></div></div>
+
+<p>需要用到virtio相关</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>qemu-system-aarch64 <span class="se">\</span>
+    <span class="nt">-M</span> virt <span class="se">\</span>
+    <span class="nt">-cpu</span> cortex-a53 <span class="se">\</span>
+    <span class="nt">-kernel</span> /home/songyj/embedded/buildroot-2024.08.2/output/images/Image <span class="se">\</span>
+    <span class="nt">-drive</span> <span class="nv">file</span><span class="o">=</span>/home/songyj/embedded/buildroot-2024.08.2/output/images/rootfs.ext4,format<span class="o">=</span>raw <span class="se">\</span>
+    <span class="nt">-append</span> <span class="s2">"root=/dev/vda nokaslr ip=dhcp"</span> <span class="se">\</span>
+    <span class="nt">-device</span> virtio-gpu-gl <span class="se">\</span>
+    <span class="nt">-display</span> gtk,gl<span class="o">=</span>core <span class="se">\</span>
+    <span class="nt">-device</span> virtio-net-pci,netdev<span class="o">=</span>net0 <span class="se">\</span>
+    <span class="nt">-serial</span> mon:stdio <span class="se">\ </span><span class="c"># 串口输出重定向到当前的终端</span>
+    <span class="c"># gdb调试时加入下面的switch 会停止在kernel加载的地方</span>
+    <span class="c"># -s -S</span>
+</code></pre></div></div>
+
+<h3 id="3-buildroot准备根文件系统">3. buildroot准备根文件系统</h3>
+
+<h3 id="4-环境验证">4. 环境验证</h3>
+
+<h3 id="5-命令">5. 命令</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># qemu上linux获取交叉编译的应用程序</span>
+tftp 10.0.2.2 <span class="nt">-c</span> get drm_test
+
+<span class="c"># gdb调试kernel panic</span>
+gdb-multiarch vmlinux
+<span class="c"># 在gdb内部使用</span>
+target remote localhost：1234
+b 错误函数
+</code></pre></div></div>
+
+<h3 id="6-问题">6. 问题</h3>
+
+<ul>
+  <li><strong><em>nvim clangd返回-32001 Invalid AST</em></strong></li>
+</ul>
+
+<p>在linux项目顶层添加.clangd文件，内容如下：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>CompileFlags:
+  Remove: <span class="o">[</span><span class="nt">-march</span><span class="o">=</span><span class="k">*</span>, <span class="nt">-mabi</span><span class="o">=</span><span class="k">*</span><span class="o">]</span>
+</code></pre></div></div>
+
+<p>参见https://github.com/clangd/clangd/issues/1582</p>
+
+<ul>
+  <li><strong><em>nvim clangd突然无法跳转 并显示一大堆错误</em></strong></li>
+</ul>
+
+<p>应该正确使用clangd生成脚本，compile_commands.json生成在源码根目录</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># /home/songyj/embedded/linux
+python3 ./scripts/clang-tools/gen_compile_commands.py
+</code></pre></div></div>
+
+<p>随后打开文件，让clangd更新条目</p>
+
+<p>参见https://blog.csdn.net/Roger_Spencer/article/details/135325340</p>
+
+<ul>
+  <li><strong><em>QEMU串口终端不能滚动</em></strong></li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 將串口输出重定向到当前的终端</span>
+<span class="nt">-serial</span> mon:stdio 
+</code></pre></div></div>
+
+<p>https://fadeevab.com/how-to-setup-qemu-output-to-console-and-automate-using-shell-script/</p>
+
+<h2 id="0x01-drm">0x01 DRM</h2>
+
+<blockquote>
+  <p>The scope of DRM has been expanded over the years to cover more functionality previously handled by user-space programs, such as framebuffer managing and <a href="https://en.wikipedia.org/wiki/Mode_setting">mode setting</a>, memory-sharing objects and memory synchronization.</p>
+</blockquote>
+
+<p>DRM最开始是为应用程序使用GPU而设计的子系统，但是随着DRM子系统的发展，加入了越来越多的模块比如：KMS和GEM</p>
+
+<ul>
+  <li><strong>KMS（kernel mode-setting）</strong> a combination of <a href="https://en.wikipedia.org/wiki/Screen_resolution">screen resolution</a>, <a href="https://en.wikipedia.org/wiki/Color_depth">color depth</a> and <a href="https://en.wikipedia.org/wiki/Refresh_rate">refresh rate</a> 曾今在user space完成设置，现在在kernel space解决多进程并发等问题。</li>
+</ul>
+
+<blockquote>
+  <p>To avoid breaking backwards compatibility of the DRM API, Kernel Mode-Setting is provided as an additional <em>driver feature</em> of certain DRM drivers.</p>
+</blockquote>
+
+<p>为了兼容之前的DRM驱动，维持一致性，KMS作为一个属性被嵌入到DRM driver中，如果一个DRM driver支持KMS操作，需要置位<strong>DRIVER_MODESET</strong>，这些支持KMS的DRM驱动被叫做KMS driver和legacy的DRM驱动区别开，KMS驱动的支持程度非常高，哪怕这个驱动中没有实现DRM操作只有KMS操作（比如在不支持3D rendering的硬件上）</p>
+
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/c0131052a585d4c497f612384d98ead4.png" alt="img" /></p>
+
+<p><strong>KMS</strong>所管理的display pipeline：</p>
+
+<ol>
+  <li>
+    <p><strong>FrameBuffer</strong> 存储图像数据的内存区域，它是显存的一部分，包含了需要显示到屏幕上的像素数据。</p>
+  </li>
+  <li>
+    <p><strong>Planes</strong> 不是任何硬件，它表示一个memory object containing a buffer，这个buffer随后会被送入CRTC</p>
+  </li>
+  <li>
+    <p><strong>CRTC</strong> 控制屏幕输出的硬件模块，它决定了图像的显示方式（包括位置、大小、刷新率等）。</p>
+  </li>
+  <li>
+    <p><strong>Connector</strong> 显示器或屏幕的接口，负责处理显示输出信号的连接。（HDMI、DP、VGA）</p>
+  </li>
+  <li>
+    <p><strong>Encoder</strong> 将图像信号从 GPU 输出到显示器（通过 Connector）的硬件模块，将来自 CRTC 的图像数据转换为符合显示器要求的信号格</p>
+
+    <p>式。</p>
+  </li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">KMS display pipeline</th>
+      <th style="text-align: center">KMS Output Pipeline</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><img src="https://www.kernel.org/doc/html/latest/_images/DOT-dade12aa9127c64406e41cdf8d7f80694c134db2.svg" alt="KMS Display Pipeline" /></td>
+      <td style="text-align: center"><img src="https://www.kernel.org/doc/html/latest/_images/DOT-6445c75fc4859992454fd377127d4d309e82f09a.svg" alt="KMS Output Pipeline" /></td>
+    </tr>
+  </tbody>
+</table>
+
+<ul>
+  <li><strong>GEM（Graphics Execution Manager）</strong></li>
+</ul>
+
+<p>在/dev/dri中，为什么有两种形式的节点？他们的区别？</p>
+
+<blockquote>
+  <p>Each GPU detected by DRM is referred to as a <em>DRM device</em>, and a device file <code class="language-plaintext highlighter-rouge">/dev/dri/card*X*</code> (where <em>X</em> is a sequential number) is created to interface with it. User-space programs that want to talk to the GPU must <a href="https://en.wikipedia.org/wiki/Open_(system_call)">open</a> this file and use <a href="https://en.wikipedia.org/wiki/Ioctl">ioctl</a> calls to communicate with DRM. Different ioctls correspond to different functions of the DRM <a href="https://en.wikipedia.org/wiki/Application_programming_interface">API</a>.</p>
+</blockquote>
+
+<ul>
+  <li>/dev/dri/cardX  这种节点被叫做<strong>primary node</strong>，最开始被用来完成both privileged (modesetting, other display control) and non-privileged (rendering, <a href="https://en.wikipedia.org/wiki/GPGPU">GPGPU</a> compute) operations</li>
+  <li>/dev/dri/renderD128 这种节点的出现为了解决单一primary node的不便（there must always be a running graphics server (the X Server, a Wayland compositor, …) acting as DRM-Master of a DRM device so that other user space programs can be granted the use of the device, even in cases not involving any graphics display like GPGPU computations），將non-privileged的操作独立出来，因此操作/dev/dri/renderD128只能使用a subset of DRM api</li>
+</ul>
+
+<p>https://en.wikipedia.org/wiki/Direct_Rendering_Manager</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// 部分重要成员</span>
+<span class="k">struct</span> <span class="n">drm_device</span> <span class="p">{</span>
+    <span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">;</span>
+    
+    <span class="k">const</span> <span class="k">struct</span> <span class="n">drm_driver</span> <span class="o">*</span><span class="n">driver</span><span class="p">;</span>			<span class="c1">// driver</span>
+	<span class="k">struct</span> <span class="n">drm_minor</span> <span class="o">*</span><span class="n">primary</span><span class="p">,</span> <span class="o">*</span><span class="n">render</span><span class="p">,</span> <span class="o">*</span><span class="n">accel</span><span class="p">;</span> <span class="c1">// 分别对应三种不同的功能 accel对应的应该是GPGPU</span>
+	<span class="n">u32</span> <span class="n">driver_features</span><span class="p">;</span> 						<span class="c1">// driver支持的功能 DRIVER_MODESET DRIVER_GEM等</span>
+	
+    <span class="k">struct</span> <span class="n">drm_mode_config</span> <span class="n">mode_config</span><span class="p">;</span>			<span class="c1">// 管理了kms中的几乎所有硬件节点 property func</span>
+												<span class="c1">// crtc encoder connector plane都被链表管理起来供驱动选择</span>
+    											<span class="c1">// 包括drm_mode_config_funcs：fb_create atomic_commit等</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="1-libdrm">1. libdrm</h3>
+
+<p>使用libdrm提供的接口可以完成喜爱那是设置，下面先看一个simple_drm.c程序，程序使用drm接口配置屏幕显示全白：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;stddef.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;errno.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;fcntl.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;stdbool.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;stdint.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;string.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;sys/mman.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;time.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;xf86drm.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;xf86drmMode.h&gt;</span><span class="cp">
+</span>
+<span class="k">struct</span> <span class="n">buffer_object</span> <span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">width</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">height</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">pitch</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">handle</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">size</span><span class="p">;</span>
+	<span class="kt">uint8_t</span> <span class="o">*</span><span class="n">vaddr</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">fb_id</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="n">buffer_object</span> <span class="n">buf</span><span class="p">;</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">modeset_create_fb</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="k">struct</span> <span class="n">buffer_object</span> <span class="o">*</span><span class="n">bo</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">struct</span> <span class="n">drm_mode_create_dumb</span> <span class="n">create</span> <span class="o">=</span> <span class="p">{};</span>
+ 	<span class="k">struct</span> <span class="n">drm_mode_map_dumb</span> <span class="n">map</span> <span class="o">=</span> <span class="p">{};</span>
+
+	<span class="cm">/* create a dumb-buffer, the pixel format is XRGB888 */</span>
+	<span class="n">create</span><span class="p">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">width</span><span class="p">;</span>
+	<span class="n">create</span><span class="p">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">height</span><span class="p">;</span>
+	<span class="n">create</span><span class="p">.</span><span class="n">bpp</span> <span class="o">=</span> <span class="mi">32</span><span class="p">;</span>
+	<span class="n">drmIoctl</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">DRM_IOCTL_MODE_CREATE_DUMB</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">create</span><span class="p">);</span>
+
+	<span class="cm">/* bind the dumb-buffer to an FB object */</span>
+	<span class="n">bo</span><span class="o">-&gt;</span><span class="n">pitch</span> <span class="o">=</span> <span class="n">create</span><span class="p">.</span><span class="n">pitch</span><span class="p">;</span>
+	<span class="n">bo</span><span class="o">-&gt;</span><span class="n">size</span> <span class="o">=</span> <span class="n">create</span><span class="p">.</span><span class="n">size</span><span class="p">;</span>
+	<span class="n">bo</span><span class="o">-&gt;</span><span class="n">handle</span> <span class="o">=</span> <span class="n">create</span><span class="p">.</span><span class="n">handle</span><span class="p">;</span>
+	<span class="n">drmModeAddFB</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">width</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">height</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">pitch</span><span class="p">,</span>
+			   <span class="n">bo</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">bo</span><span class="o">-&gt;</span><span class="n">fb_id</span><span class="p">);</span>
+
+	<span class="cm">/* map the dumb-buffer to userspace */</span>
+	<span class="n">map</span><span class="p">.</span><span class="n">handle</span> <span class="o">=</span> <span class="n">create</span><span class="p">.</span><span class="n">handle</span><span class="p">;</span>
+	<span class="n">drmIoctl</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">DRM_IOCTL_MODE_MAP_DUMB</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">map</span><span class="p">);</span>
+
+	<span class="n">bo</span><span class="o">-&gt;</span><span class="n">vaddr</span> <span class="o">=</span> <span class="n">mmap</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">create</span><span class="p">.</span><span class="n">size</span><span class="p">,</span> <span class="n">PROT_READ</span> <span class="o">|</span> <span class="n">PROT_WRITE</span><span class="p">,</span>
+			<span class="n">MAP_SHARED</span><span class="p">,</span> <span class="n">fd</span><span class="p">,</span> <span class="n">map</span><span class="p">.</span><span class="n">offset</span><span class="p">);</span>
+
+	<span class="cm">/* initialize the dumb-buffer with white-color */</span>
+	<span class="n">memset</span><span class="p">(</span><span class="n">bo</span><span class="o">-&gt;</span><span class="n">vaddr</span><span class="p">,</span> <span class="mh">0xff</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">);</span>
+
+	<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">modeset_destroy_fb</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="k">struct</span> <span class="n">buffer_object</span> <span class="o">*</span><span class="n">bo</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">struct</span> <span class="n">drm_mode_destroy_dumb</span> <span class="n">destroy</span> <span class="o">=</span> <span class="p">{};</span>
+
+	<span class="n">drmModeRmFB</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">fb_id</span><span class="p">);</span>
+
+	<span class="n">munmap</span><span class="p">(</span><span class="n">bo</span><span class="o">-&gt;</span><span class="n">vaddr</span><span class="p">,</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">);</span>
+
+	<span class="n">destroy</span><span class="p">.</span><span class="n">handle</span> <span class="o">=</span> <span class="n">bo</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">;</span>
+	<span class="n">drmIoctl</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">DRM_IOCTL_MODE_DESTROY_DUMB</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">destroy</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">**</span><span class="n">argv</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">fd</span><span class="p">;</span>
+	<span class="n">drmModeConnector</span> <span class="o">*</span><span class="n">conn</span><span class="p">;</span>
+	<span class="n">drmModeRes</span> <span class="o">*</span><span class="n">res</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">conn_id</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">crtc_id</span><span class="p">;</span>
+
+	<span class="n">fd</span> <span class="o">=</span> <span class="n">open</span><span class="p">(</span><span class="s">"/dev/dri/card0"</span><span class="p">,</span> <span class="n">O_RDWR</span> <span class="o">|</span> <span class="n">O_CLOEXEC</span><span class="p">);</span>
+
+	<span class="n">res</span> <span class="o">=</span> <span class="n">drmModeGetResources</span><span class="p">(</span><span class="n">fd</span><span class="p">);</span>
+	<span class="n">crtc_id</span> <span class="o">=</span> <span class="n">res</span><span class="o">-&gt;</span><span class="n">crtcs</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+	<span class="n">conn_id</span> <span class="o">=</span> <span class="n">res</span><span class="o">-&gt;</span><span class="n">connectors</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+
+	<span class="n">conn</span> <span class="o">=</span> <span class="n">drmModeGetConnector</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">conn_id</span><span class="p">);</span>
+	<span class="n">buf</span><span class="p">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">conn</span><span class="o">-&gt;</span><span class="n">modes</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">hdisplay</span><span class="p">;</span>
+	<span class="n">buf</span><span class="p">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">conn</span><span class="o">-&gt;</span><span class="n">modes</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">vdisplay</span><span class="p">;</span>
+
+	<span class="n">modeset_create_fb</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">buf</span><span class="p">);</span>
+
+	<span class="n">drmModeSetCrtc</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">crtc_id</span><span class="p">,</span> <span class="n">buf</span><span class="p">.</span><span class="n">fb_id</span><span class="p">,</span>
+			<span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">conn_id</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">conn</span><span class="o">-&gt;</span><span class="n">modes</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+
+	<span class="n">getchar</span><span class="p">();</span>
+
+	<span class="n">modeset_destroy_fb</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">buf</span><span class="p">);</span>
+
+	<span class="n">drmModeFreeConnector</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span>
+	<span class="n">drmModeFreeResources</span><span class="p">(</span><span class="n">res</span><span class="p">);</span>
+
+	<span class="n">close</span><span class="p">(</span><span class="n">fd</span><span class="p">);</span>
+
+	<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong><em>为什么將节点换成/dev/dri/renderD128之后segfault？</em></strong></p>
+
+<h4 id="legacy接口">legacy接口</h4>
+
+<ul>
+  <li><strong>drmModeSetCrtc</strong></li>
+  <li><strong>drmModePageFlip</strong> （只会在vsync的时候进行切换framebuffer，避免画面撕裂）</li>
+  <li><strong>drmModeSetPlane</strong>（只显示framebuffer的部分，之前都是全部显示）使用前需要先调用drmModeSetCrtc打通链路</li>
+</ul>
+
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/c1f6c3fdeef9d3571a45e46580c7379b.png" alt="img" /></p>
+
+<h4 id="atomic接口">atomic接口</h4>
+
+<p>atomic关键词如何理解？</p>
+
+<p>所有的property配置完成后进行commit，commit如果失败，所有的配置恢复到commit之前</p>
+
+<p>atomic接口引入property，这些property的引入简化驱动层IOCTL函数</p>
+
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/2df1c788392fd8240a9637afad6f1d6b.png" alt="img" /></p>
+
+<p><strong><em>为什么在简单的 DRM 应用程序中不需要显式配置 encoder？</em></strong></p>
+
+<h3 id="2-drm-driver">2. DRM driver</h3>
+
+<p><img src="file:///home/songyj/Pictures/Screenshots/Screenshot%20from%202024-12-15%2009-10-39.png" alt="" /></p>
+
+<p>DRM驱动其实不是一整个驱动而是图形栈各硬件驱动都被插入到DRM框架中，比如有kms驱动，gem驱动以及GPU驱动，其中KMS驱动中会包含有操作硬件的部分，这些硬件操作会被嵌入相应的drm模块中，</p>
+
+<p>render和display是区别开的</p>
+
+<p>libdrm中提供的接口是DRM driver暴露出来的，每一个DRM驱动的核心都是<strong>struct drm_driver</strong>。对于Linux驱动而言，一般都是一个结构体，随后通过register函数往总线或者驱动框架注册，DRM驱动也是一样：</p>
+
+<ol>
+  <li><a href="https://www.kernel.org/doc/html/v4.11/gpu/drm-internals.html#c.drm_dev_alloc"><code class="language-plaintext highlighter-rouge">drm_dev_alloc</code></a> 为<strong>struct drm_driver</strong>分配内存</li>
+  <li>填充<strong>struct drm_driver</strong>各成员</li>
+  <li><a href="https://www.kernel.org/doc/html/v4.11/gpu/drm-internals.html#c.drm_dev_register"><code class="language-plaintext highlighter-rouge">drm_dev_register</code></a> 注册<strong>struct drm_driver</strong>到DRM驱动框架</li>
+</ol>
+
+<p><strong>struct drm_driver</strong>中的fops提供.unlocked_ioctl=drm_ioctl，使用drm core中的函数来处理用户空间的ioctl请求。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>struct drm_driver
+{
+	一系列成员函数指针;
+	
+	.fops; // 这里面包含ioctl ioctl的函数可能最后还是调用到上面的成员函数 比如create_dumb
+}
+
+// This creates a new dumb buffer in the driver's backing storage manager (GEM, TTM or something else entirely) and // returns the resulting buffer handle. This handle can then be wrapped up into a framebuffer modeset object.
+// 比如create_dumb接受ioctl传递的buffer参数（width height colorformat）凭这些参数计算buffer大小并申请
+// framebuffer是buffer handle+metadata
+</code></pre></div></div>
+
+<p>drm_atomic_helper_commit_planes</p>
+
+<p>初始化display pipeline的顺序很重要：connector-&gt;encoder-&gt;plane-&gt;crtc</p>
+
+<p>drmModeSetCrtc ioctl的调用路径：</p>
+
+<ol>
+  <li>drm_mode_setcrtc</li>
+  <li>drm_atomic_helper_set_config</li>
+  <li>drm_atomic_commit</li>
+  <li>drm_atomic_helper_commit</li>
+  <li>drm_atomic_helper_commit_tail</li>
+  <li>drm_atomic_helper_commit_planes</li>
+  <li>plane.private-&gt;atomic_update</li>
+</ol>
+
+<p>drm_atomic_helper_check_modset</p>
+
+<p>KMS</p>
+
+<p>DRM driver必须调用<a href="https://www.kernel.org/doc/html/v4.11/gpu/drm-kms.html#c.drm_mode_config_init"><code class="language-plaintext highlighter-rouge">drm_mode_config_init</code></a></p>
+
+<p>对<strong>struct drm_driver</strong>中的<strong><em>driver_feature</em></strong>进行置位，告诉DRM驱动框架当前驱动的能力，常见的标志位如下：</p>
+
+<ul>
+  <li><strong>DRIVER_MODESET</strong> 支持modesetting操作</li>
+  <li><strong>DRIVER_GEM</strong> 支持内存分配</li>
+  <li><strong>DRIVER_ATOMIC</strong> 支持atomic操作</li>
+  <li><strong>DRIVER_RENDER</strong> 支持渲染</li>
+</ul>
+
+<p>调用fb_create的ioctl是<strong>DRM_IOCTL_MODE_ADDFB2</strong>，fb_create將gem obj handle和fb绑定，没有绑定handle的fb没有任何实际的显示内容</p>
+
+<h4 id="综合实现分析exynos为例">综合实现分析（exynos为例）</h4>
+
+<p>完整的KMS驱动中间含有很多sub drivers不是以前那种简单的一个.c的char driver所能相比的，这种驱动被叫做aggregate driver。不过依然可以找到一条主线来分析它：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>├── exynos5433_drm_decon.c
+├── exynos5433_drm_decon.o
+├── exynos7_drm_decon.c
+├── exynos7_drm_decon.o
+├── exynos_dp.c
+├── exynos_drm_crtc.c
+├── exynos_drm_crtc.h
+├── exynos_drm_crtc.o
+├── exynos_drm_dma.c
+├── exynos_drm_dma.o
+├── exynos_drm_dpi.c
+├── exynos_drm_drv.c
+├── exynos_drm_drv.h
+├── exynos_drm_drv.o
+├── exynos_drm_dsi.c
+├── exynos_drm_dsi.o
+├── exynos_drm_fb.c
+├── exynos_drm_fbdev.c
+├── exynos_drm_fbdev.h
+├── exynos_drm_fbdev.o
+├── exynos_drm_fb.h
+├── exynos_drm_fb.o
+├── exynos_drm_fimc.c
+├── exynos_drm_fimd.c
+├── exynos_drm_g2d.c
+├── exynos_drm_g2d.h
+├── exynos_drm_gem.c
+├── exynos_drm_gem.h
+├── exynos_drm_gem.o
+├── exynos_drm_gsc.c
+├── exynos_drm_ipp.c
+├── exynos_drm_ipp.h
+├── exynosdrm.ko
+├── exynos_drm_mic.c
+├── exynos_drm_mic.o
+├── exynosdrm.mod
+├── exynosdrm.mod.c
+├── exynosdrm.mod.o
+├── exynosdrm.o
+├── exynos_drm_plane.c
+├── exynos_drm_plane.h
+├── exynos_drm_plane.o
+├── exynos_drm_rotator.c
+├── exynos_drm_scaler.c
+├── exynos_drm_vidi.c
+├── exynos_drm_vidi.h
+├── exynos_hdmi.c
+├── exynos_hdmi.o
+├── exynos_mixer.c
+├── Kconfig
+├── Makefile
+├── modules.order
+├── regs-decon5433.h
+├── regs-decon7.h
+├── regs-fimc.h
+├── regs-gsc.h
+├── regs-hdmi.h
+├── regs-mixer.h
+├── regs-rotator.h
+├── regs-scaler.h
+└── regs-vp.h
+</code></pre></div></div>
+
+<p>从exynos_drm_drv.c开始看起</p>
+
+<p>exynos_drm_init()作为入口函数被module_init宏设置到<strong>内核入口</strong></p>
+
+<p>exynos_drm_register_devices()</p>
+
+<p>exynos_drm_register_drivers()</p>
+
+<h4 id="drm解析分发ioctl">DRM解析分发ioctl</h4>
+
+<p>用户程序接口的名字和ioctl的名字不一定一致</p>
+
+<p>atomic ioctl由一个ioctl统一分发</p>
+
+<p>GEM是内存分配机制，dma-buf是内存共享机制，GEM和dma-buf结合使用。</p>
+
+<h4 id="dma-buf">dma-buf</h4>
+
+<p>dma-buf在内核空间和用户空间中的表显形式不一样，在用户空间中是一个<strong>fd</strong>，在内核中是<strong>struct dma_buf</strong></p>
+
+<blockquote>
+  <p>struct dma_buf - shared buffer object</p>
+
+  <p>This represents a shared buffer, created by calling dma_buf_export(). The userspace representation is a normal file descriptor, which can be created by calling dma_buf_fd().</p>
+
+  <p>Shared dma buffers are reference counted using dma_buf_put() and get_dma_buf().</p>
+
+  <p>Device DMA access is handled by the separate &amp;struct dma_buf_attachment.</p>
+</blockquote>
+
+<ul>
+  <li>No standardised memory allocation: It’s up to the exporter;</li>
+  <li>An arbitrary buffer can be wrapped into a DMA buffer;</li>
+  <li>An fd can be returned to the userspace to reference this buffer;</li>
+  <li>The fd can be passed to another process;</li>
+  <li>The fd can be mmapped and accessed by the CPU;</li>
+  <li>The fd can be imported by any driver supporting the user role</li>
+</ul>
+
+<p>场景：</p>
+
+<p>GPU 和显示控制器共享帧缓冲，GPU 使用 GEM 分配显存来存储绘制的图形帧。</p>
+
+<p>GPU 驱动通过 <code class="language-plaintext highlighter-rouge">dma_buf_export</code> 将 GEM 对象导出为 dma-buf。</p>
+
+<p>显示控制器驱动通过 <code class="language-plaintext highlighter-rouge">dma_buf_attach</code> 访问该缓冲区，并将内容直接显示。</p>
+
+<p>下面列出一对用于在dma-buf和gem handle之间转换的ioctl</p>
+
+<ul>
+  <li>drm_prime_fd_to_handle</li>
+  <li>drm_prime_handle_to_fd</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// 查看dma heap节点
+ls /dev/dma_heap
+
+struct dma_heap_allocation_data heap_data = {
+    .len = 1048576, // 1meg
+    .fd_flags = O_RDWR | O_CLOEXEC,
+};
+
+fd = open(“/dev/dma_heap/system”, O_RDONLY | O_CLOEXEC);
+if (fd &lt; 0) return fd;
+ret = ioctl(fd, DMA_HEAP_IOCTL_ALLOC, &amp;heap_data)
+if (ret) return ret;
+return heap_data.fd;
+</code></pre></div></div>
+
+<p><a href="https://www.youtube.com/watch?v=UsEVoWD_o0c">dma-buf</a></p>
+
+<h4 id="helper-function">helper function</h4>
+
+<h5 id="helper-function如何使用">helper function如何使用？</h5>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// 定义某个helper function具体的操作</span>
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">exynos_plane_atomic_update</span><span class="p">(</span><span class="k">struct</span> <span class="n">drm_plane</span> <span class="o">*</span><span class="n">plane</span><span class="p">,</span> <span class="k">struct</span> <span class="n">drm_atomic_state</span> <span class="o">*</span><span class="n">state</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">struct</span> <span class="n">drm_plane_state</span> <span class="o">*</span><span class="n">new_state</span> <span class="o">=</span> <span class="n">drm_atomic_get_new_plane_state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span>
+								           <span class="n">plane</span><span class="p">);</span>
+	<span class="k">struct</span> <span class="n">exynos_drm_crtc</span> <span class="o">*</span><span class="n">exynos_crtc</span> <span class="o">=</span> <span class="n">to_exynos_crtc</span><span class="p">(</span><span class="n">new_state</span><span class="o">-&gt;</span><span class="n">crtc</span><span class="p">);</span>
+	<span class="k">struct</span> <span class="n">exynos_drm_plane</span> <span class="o">*</span><span class="n">exynos_plane</span> <span class="o">=</span> <span class="n">to_exynos_plane</span><span class="p">(</span><span class="n">plane</span><span class="p">);</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">new_state</span><span class="o">-&gt;</span><span class="n">crtc</span><span class="p">)</span>
+		<span class="k">return</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="n">exynos_crtc</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">update_plane</span><span class="p">)</span>
+		<span class="n">exynos_crtc</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">update_plane</span><span class="p">(</span><span class="n">exynos_crtc</span><span class="p">,</span> <span class="n">exynos_plane</span><span class="p">);</span> <span class="c1">// 硬件操作</span>
+<span class="p">}</span>
+
+<span class="c1">// 定义某个硬件helper function集合</span>
+<span class="k">static</span> <span class="k">const</span> <span class="k">struct</span> <span class="n">drm_plane_helper_funcs</span> <span class="n">plane_helper_funcs</span> <span class="o">=</span> <span class="p">{</span>
+	<span class="p">.</span><span class="n">atomic_check</span> <span class="o">=</span> <span class="n">exynos_plane_atomic_check</span><span class="p">,</span>
+	<span class="p">.</span><span class="n">atomic_update</span> <span class="o">=</span> <span class="n">exynos_plane_atomic_update</span><span class="p">,</span>
+	<span class="p">.</span><span class="n">atomic_disable</span> <span class="o">=</span> <span class="n">exynos_plane_atomic_disable</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="c1">// 注册helper function到drm_plane</span>
+<span class="c1">// 实际plane-&gt;helper_private = funcs;</span>
+<span class="n">drm_plane_helper_add</span><span class="p">(</span><span class="o">&amp;</span><span class="n">exynos_plane</span><span class="o">-&gt;</span><span class="n">base</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">plane_helper_funcs</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h4 id="scatterlist">scatterlist</h4>
+
+<p>散列表的结构体如下，其中scatterlist可以被分成三种：一般，铰链，结束，这三种类型由page_link的最低两位决定</p>
+
+<p>offset和length分别表示内存块在page上的偏移位置和内存长度</p>
+
+<p>dma_address表示PA物理地址</p>
+
+<p><strong>每一个scatterlist可以看作一个内存块，每一个sg_table则是一组链表，其中链表的每一个元素都是一个scaatterlist数组</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>struct scatterlist {
+	unsigned long	page_link;
+	unsigned int	offset;
+	unsigned int	length;
+	dma_addr_t	dma_address;
+#ifdef CONFIG_NEED_SG_DMA_LENGTH
+	unsigned int	dma_length;
+#endif
+#ifdef CONFIG_NEED_SG_DMA_FLAGS
+	unsigned int    dma_flags;
+#endif
+};
+
+struct sg_table {
+	struct scatterlist *sgl;	/* the list */
+	unsigned int nents;		/* number of mapped entries */
+	unsigned int orig_nents;	/* original size of list */
+};
+</code></pre></div></div>
+
+<p>散列表遍历</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define for_each_sg(sglist, sg, nr, __i)	\
+	for (__i = 0, sg = (sglist); __i &lt; (nr); __i++, sg = sg_next(sg))
+	
+struct scatterlist *sg_next(struct scatterlist *sg)
+{
+	if (sg_is_last(sg))
+		return NULL;
+
+	sg++;
+	if (unlikely(sg_is_chain(sg)))
+		sg = sg_chain_ptr(sg);
+
+	return sg;
+}
+EXPORT_SYMBOL(sg_next);
+
+</code></pre></div></div>
+
+<h4 id="问题">问题</h4>
+
+<p><strong>是否硬件相关的操作都要放在helper函数中？</strong></p>
+
+<p>https://www.kernel.org/doc/html/v4.11/gpu/index.html</p>
+
+<p><strong>fake_gpu 0000:00:01.0: BAR 0 [mem 0x00000000-0x0000001f]: not claimed; can’t enable device</strong></p>
+
+<h2 id="0x02-qemu---fake-gpu-device">0x02 QEMU - fake GPU device</h2>
+
+<p>在QEMU中引入一个新的虚拟GPU挂载到PCI总线</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">"qemu/osdep.h"</span><span class="cp">
+#include</span> <span class="cpf">"qom/object.h"</span><span class="cp">
+#include</span> <span class="cpf">"ui/console.h"</span><span class="cp">
+#include</span> <span class="cpf">"hw/pci/pci_device.h"</span><span class="cp">
+</span>
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">Fake_GPU_State</span> <span class="n">Fake_GPU_State</span><span class="p">;</span>
+
+<span class="cp">#define TYPE_FAKE_GPU "fake_gpu"
+</span><span class="n">OBJECT_DECLARE_SIMPLE_TYPE</span><span class="p">(</span><span class="n">Fake_GPU_State</span><span class="p">,</span> <span class="n">FAKE_GPU</span><span class="p">)</span>
+
+<span class="cp">#define REG_NUM     8
+#define REG_SIZE    4
+</span>
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">Fake_GPU_State</span>
+<span class="p">{</span>
+    <span class="n">PCIDevice</span> <span class="n">parent_obj</span><span class="p">;</span>
+
+    <span class="n">MemoryRegion</span> <span class="n">bar</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">regs</span><span class="p">[</span><span class="n">REG_NUM</span><span class="p">];</span>
+<span class="p">}</span><span class="n">Fake_GPU_State</span><span class="p">;</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_write</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">opaque</span><span class="p">,</span> <span class="n">hwaddr</span> <span class="n">addr</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">value</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="n">size</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">Fake_GPU_State</span> <span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="n">FAKE_GPU</span><span class="p">(</span><span class="n">opaque</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"wr</span><span class="se">\r\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">reg0</span> <span class="o">=</span> <span class="n">value</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">uint64_t</span> <span class="nf">fake_gpu_read</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">opaque</span><span class="p">,</span> <span class="n">hwaddr</span> <span class="n">addr</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="n">size</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">Fake_GPU_State</span> <span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="n">FAKE_GPU</span><span class="p">(</span><span class="n">opaque</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"rd</span><span class="se">\r\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">s</span><span class="o">-&gt;</span><span class="n">reg0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="k">const</span> <span class="n">MemoryRegionOps</span> <span class="n">fake_gpu_ops</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">.</span><span class="n">write</span> <span class="o">=</span> <span class="n">fake_gpu_write</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">read</span> <span class="o">=</span> <span class="n">fake_gpu_read</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_realize</span><span class="p">(</span><span class="n">PCIDevice</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="n">Error</span> <span class="o">**</span><span class="n">errp</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">Fake_GPU_State</span> <span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="n">FAKE_GPU</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">"realize start</span><span class="se">\r\n</span><span class="s">"</span><span class="p">);</span>
+
+    <span class="n">memory_region_init_io</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">bar</span><span class="p">,</span> <span class="n">OBJECT</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="o">&amp;</span><span class="n">fake_gpu_ops</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="s">"fake_gpu"</span><span class="p">,</span> <span class="mi">32</span><span class="p">);</span>
+    <span class="n">pci_register_bar</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">PCI_BASE_ADDRESS_SPACE_MEMORY</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">bar</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_exit</span><span class="p">(</span><span class="n">PCIDevice</span> <span class="o">*</span><span class="n">dev</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_class_init</span><span class="p">(</span><span class="n">ObjectClass</span> <span class="o">*</span><span class="n">klass</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">//DeviceClass *dc = DEVICE_CLASS(klass);</span>
+    <span class="n">PCIDeviceClass</span> <span class="o">*</span><span class="n">k</span> <span class="o">=</span> <span class="n">PCI_DEVICE_CLASS</span><span class="p">(</span><span class="n">klass</span><span class="p">);</span>
+
+    <span class="n">k</span><span class="o">-&gt;</span><span class="n">realize</span> <span class="o">=</span> <span class="n">fake_gpu_realize</span><span class="p">;</span>
+    <span class="n">k</span><span class="o">-&gt;</span><span class="n">exit</span> <span class="o">=</span> <span class="n">fake_gpu_exit</span><span class="p">;</span>
+    <span class="n">k</span><span class="o">-&gt;</span><span class="n">vendor_id</span> <span class="o">=</span> <span class="mh">0x1234</span><span class="p">;</span>
+    <span class="n">k</span><span class="o">-&gt;</span><span class="n">device_id</span> <span class="o">=</span> <span class="mh">0xbeef</span><span class="p">;</span>
+    <span class="n">k</span><span class="o">-&gt;</span><span class="n">class_id</span> <span class="o">=</span> <span class="n">PCI_CLASS_OTHERS</span><span class="p">;</span> <span class="c1">// 一定要有否则报错 BAR0 not claimed</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="k">const</span> <span class="n">TypeInfo</span> <span class="n">fake_gpu_info</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">TYPE_FAKE_GPU</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">parent</span> <span class="o">=</span> <span class="n">TYPE_PCI_DEVICE</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">instance_size</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">Fake_GPU_State</span><span class="p">),</span>
+    <span class="p">.</span><span class="n">class_init</span>    <span class="o">=</span> <span class="n">fake_gpu_class_init</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">interfaces</span> <span class="o">=</span> <span class="p">(</span><span class="n">InterfaceInfo</span><span class="p">[])</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="n">INTERFACE_CONVENTIONAL_PCI_DEVICE</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">},</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_device_register_types</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">type_register_static</span><span class="p">(</span><span class="o">&amp;</span><span class="n">fake_gpu_info</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">type_init</span><span class="p">(</span><span class="n">fake_gpu_device_register_types</span><span class="p">);</span>
+
+</code></pre></div></div>
+
+<p>QEMU启动相关配置：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>qemu-system-aarch64 <span class="se">\</span>
+    <span class="nt">-M</span> virt <span class="se">\</span>
+    <span class="nt">-cpu</span> cortex-a53 <span class="se">\</span>
+    <span class="nt">-kernel</span> /home/songyj/embedded/buildroot-2024.08.2/output/images/Image <span class="se">\</span>
+    <span class="nt">-drive</span> <span class="nv">file</span><span class="o">=</span>/home/songyj/embedded/buildroot-2024.08.2/output/images/rootfs.ext4,format<span class="o">=</span>raw <span class="se">\</span>
+    <span class="nt">-append</span> <span class="s2">"root=/dev/vda nokaslr ip=dhcp"</span> <span class="se">\</span>
+    <span class="nt">-device</span> virtio-gpu-gl <span class="se">\</span>
+    <span class="nt">-display</span> gtk,gl<span class="o">=</span>core <span class="se">\</span>
+    <span class="nt">-device</span> virtio-net-pci,netdev<span class="o">=</span>net0 <span class="se">\</span>
+    <span class="nt">-netdev</span> user,id<span class="o">=</span>net0,tftp<span class="o">=</span>/home/songyj/embedded/tftp_qemu <span class="se">\</span>
+    <span class="nt">-device</span> fake_gpu
+</code></pre></div></div>
+
+<p>确认新的pci设备编译到QEMU中：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 编译完成之后通过qemu-system-aarch64查看设备信息</span>
+songyj@songyj-HP:~/embedded<span class="nv">$ </span>qemu-system-aarch64 <span class="nt">-device</span> <span class="nb">help</span> | <span class="nb">grep </span>fake_gpu
+name <span class="s2">"fake_gpu"</span>, bus PCI
+
+<span class="c"># 在虚拟机中使用lspci也能看到相应的设备信息</span>
+</code></pre></div></div>
+
+<p><a href="https://www.linux-kvm.org/images/1/1b/02x04-Aspen-Gerd_Hoffmann-QEMU_and_OpenGL.pdf">QEMU display</a></p>
+
+<p>QEMU添加显示支持：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">Fake_GPU_State</span>
+<span class="p">{</span>
+    <span class="n">PCIDevice</span> <span class="n">parent_obj</span><span class="p">;</span>
+
+    <span class="n">QemuConsole</span><span class="o">*</span> <span class="n">console</span><span class="p">;</span>
+
+    <span class="n">MemoryRegion</span> <span class="n">bar</span><span class="p">;</span>
+    <span class="kt">uint32_t</span> <span class="n">regs</span><span class="p">[</span><span class="n">REG_NUM</span><span class="p">];</span>
+
+    <span class="kt">void</span> <span class="o">*</span><span class="n">pixels</span><span class="p">;</span>
+<span class="p">}</span><span class="n">Fake_GPU_State</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// 显示测试函数</span>
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fill_screen_with_yellow</span><span class="p">(</span><span class="kt">uint32_t</span> <span class="o">*</span><span class="n">buffer</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="o">*</span><span class="n">framebuffer</span> <span class="o">=</span> <span class="n">buffer</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">total_pixels</span> <span class="o">=</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">768</span><span class="p">;</span>
+
+    <span class="c1">// 黄色的 ARGB 格式</span>
+    <span class="kt">uint32_t</span> <span class="n">yellow_color</span> <span class="o">=</span> <span class="mh">0x00FFFF00</span><span class="p">;</span>
+
+    <span class="c1">// 使用 memset 直接填充内存</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">total_pixels</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">framebuffer</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">yellow_color</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// 初始化屏幕</span>
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_realize</span><span class="p">(</span><span class="n">PCIDevice</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="n">Error</span> <span class="o">**</span><span class="n">errp</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">Fake_GPU_State</span> <span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="n">FAKE_GPU</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">"realize start</span><span class="se">\r\n</span><span class="s">"</span><span class="p">);</span>
+
+    <span class="n">memory_region_init_io</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">bar</span><span class="p">,</span> <span class="n">OBJECT</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="o">&amp;</span><span class="n">fake_gpu_ops</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="s">"fake_gpu"</span><span class="p">,</span> <span class="n">REG_NUM</span><span class="o">*</span><span class="n">REG_SIZE</span><span class="p">);</span>
+    <span class="n">pci_register_bar</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">PCI_BASE_ADDRESS_SPACE_MEMORY</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">bar</span><span class="p">);</span>
+
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">pixels</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">PIXS_SIZE</span><span class="p">);</span> <span class="c1">// 为像素分配空间</span>
+    <span class="n">memset</span><span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">pixels</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">PIXS_SIZE</span><span class="p">));</span>
+
+    <span class="n">s</span><span class="o">-&gt;</span><span class="n">console</span> <span class="o">=</span> <span class="n">graphic_console_init</span><span class="p">(</span><span class="n">DEVICE</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">fake_gpu_graphic_ops</span><span class="p">,</span> <span class="n">s</span><span class="p">);</span>
+
+    <span class="n">DisplaySurface</span><span class="o">*</span> <span class="n">ds</span> <span class="o">=</span> <span class="n">qemu_create_displaysurface_from</span><span class="p">(</span><span class="mi">1024</span><span class="p">,</span> <span class="mi">768</span><span class="p">,</span> <span class="n">PIXMAN_a8r8g8b8</span><span class="p">,</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="n">s</span><span class="o">-&gt;</span><span class="n">pixels</span><span class="p">);</span>
+    <span class="n">fill_screen_with_yellow</span><span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">pixels</span><span class="p">);</span> <span class="c1">// 初始化屏幕为黄色</span>
+    <span class="n">dpy_gfx_replace_surface</span><span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">console</span><span class="p">,</span> <span class="n">ds</span><span class="p">);</span> <span class="c1">// 替换画布</span>
+    <span class="n">dpy_gfx_update_full</span><span class="p">(</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">console</span><span class="p">);</span> <span class="c1">// 显示</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>https://blog.davidv.dev/posts/pcie-driver-dma/</p>
+
+<h2 id="0x03-linux---fake-gpu-device-driver">0x03 Linux - fake GPU device driver</h2>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;linux/module.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;linux/pci.h&gt;</span><span class="cp">
+</span>
+<span class="cp">#define DRV_NAME    "fake_gpu"
+#define PCI_VENDOR_ID_FAKE_GPU    0x1234
+#define PCI_DEVICE_ID_FAKE_GPU    0xbeef
+</span>
+<span class="k">volatile</span> <span class="kt">uint32_t</span> <span class="n">__iomem</span> <span class="o">*</span><span class="n">regs</span><span class="p">;</span>
+
+<span class="k">static</span> <span class="k">const</span> <span class="k">struct</span> <span class="n">pci_device_id</span> <span class="n">pci_table</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">{</span> <span class="n">PCI_DEVICE</span><span class="p">(</span><span class="n">PCI_VENDOR_ID_FAKE_GPU</span><span class="p">,</span> <span class="n">PCI_DEVICE_ID_FAKE_GPU</span><span class="p">)},</span>
+    <span class="p">{</span> <span class="p">},</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">void</span> <span class="nf">fake_gpu_remove</span><span class="p">(</span><span class="k">struct</span> <span class="n">pci_dev</span> <span class="o">*</span><span class="n">pdev</span><span class="p">)</span>
+<span class="p">{</span>
+
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">fake_gpu_probe</span><span class="p">(</span><span class="k">struct</span> <span class="n">pci_dev</span> <span class="o">*</span><span class="n">pdev</span><span class="p">,</span> <span class="k">const</span> <span class="k">struct</span> <span class="n">pci_device_id</span> <span class="o">*</span><span class="n">ent</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s">"This is a pci driver"</span><span class="p">);</span>
+ 	<span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">pdev</span><span class="p">)</span> 
+	<span class="p">{</span>
+		<span class="n">printk</span><span class="p">(</span><span class="s">"Invalid pci device pointer</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+		<span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="n">ret</span> <span class="o">=</span> <span class="n">pci_enable_device</span><span class="p">(</span><span class="n">pdev</span><span class="p">);</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">printk</span><span class="p">(</span><span class="s">"pci_enable_devices failed"</span><span class="p">);</span>
+		<span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="k">else</span>
+	<span class="p">{</span>
+		<span class="n">printk</span><span class="p">(</span><span class="s">"nice try"</span><span class="p">);</span>
+	<span class="p">}</span>
+
+	<span class="n">ret</span> <span class="o">=</span> <span class="n">pci_request_regions</span><span class="p">(</span><span class="n">pdev</span><span class="p">,</span> <span class="n">DRV_NAME</span><span class="p">);</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">printk</span><span class="p">(</span><span class="s">"pci_request_regions failed"</span><span class="p">);</span>
+	<span class="p">}</span>
+
+	<span class="n">resource_size_t</span> <span class="n">pciaddr</span> <span class="o">=</span> <span class="n">pci_resource_start</span><span class="p">(</span><span class="n">pdev</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+
+	<span class="n">regs</span> <span class="o">=</span> <span class="n">ioremap</span><span class="p">(</span><span class="n">pciaddr</span><span class="p">,</span> <span class="mi">32</span><span class="p">);</span>
+
+	    <span class="n">u32</span> <span class="n">reg_value</span> <span class="o">=</span> <span class="n">readl</span><span class="p">(</span><span class="n">regs</span><span class="p">);</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s">"Register value: 0x%x</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">reg_value</span><span class="p">);</span>
+
+    <span class="c1">// 写入寄存器</span>
+    <span class="n">writel</span><span class="p">(</span><span class="mh">0xDEADBEEF</span><span class="p">,</span> <span class="n">regs</span><span class="p">);</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s">"Written value: 0xDEADBEEF</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+	    <span class="n">reg_value</span> <span class="o">=</span> <span class="n">readl</span><span class="p">(</span><span class="n">regs</span><span class="p">);</span>
+    <span class="n">printk</span><span class="p">(</span><span class="s">"Register value: 0x%x</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">reg_value</span><span class="p">);</span>
+
+	<span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="k">struct</span> <span class="n">pci_driver</span> <span class="n">fake_gpu_driver</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">DRV_NAME</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">id_table</span> <span class="o">=</span> <span class="n">pci_table</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">probe</span> <span class="o">=</span> <span class="n">fake_gpu_probe</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">remove</span> <span class="o">=</span> <span class="n">fake_gpu_remove</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="n">module_pci_driver</span><span class="p">(</span><span class="n">fake_gpu_driver</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>https://crab2313.github.io/post/drm-legacy-kms/</p>
+
+<p>https://encelo.github.io/trip_through_graphics_pipeline_2011.html</p>
+
+<p>https://adrian.geek.nz/graphics_docs/DRM.html</p>
+
+<p>http://phd.mupuf.org/files/kr2014.pdf</p>
