@@ -1,0 +1,213 @@
+<h1 id="linux-driver">Linux Driver</h1>
+
+<h2 id="0x00-env-setup">0x00 ENV Setup</h2>
+
+<h3 id="共享网络-可以ssh不能上网的情况">共享网络 （可以ssh不能上网的情况）</h3>
+
+<p>ifconfig命令查看wifi网卡和有线网卡，需要將流量从wifi网卡转发到有线网卡，如下所示wifi卡（wlo1），有线（eno1）</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>ifconfig
+docker0: <span class="nv">flags</span><span class="o">=</span>4099&lt;UP,BROADCAST,MULTICAST&gt;  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:46:24:2c:35  txqueuelen 0  <span class="o">(</span>Ethernet<span class="o">)</span>
+        RX packets 0  bytes 0 <span class="o">(</span>0.0 B<span class="o">)</span>
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 <span class="o">(</span>0.0 B<span class="o">)</span>
+        TX errors 0  dropped 155 overruns 0  carrier 0  collisions 0
+
+eno1: <span class="nv">flags</span><span class="o">=</span>4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt;  mtu 1500
+        inet 10.42.0.1  netmask 255.255.255.0  broadcast 10.42.0.255
+        inet6 fe80::d8ea:b4fd:d1b0:1445  prefixlen 64  scopeid 0x20&lt;<span class="nb">link</span><span class="o">&gt;</span>
+        ether 04:0e:3c:04:37:f0  txqueuelen 1000  <span class="o">(</span>Ethernet<span class="o">)</span>
+        RX packets 19935  bytes 12312967 <span class="o">(</span>12.3 MB<span class="o">)</span>
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 14446  bytes 2897490 <span class="o">(</span>2.8 MB<span class="o">)</span>
+        TX errors 0  dropped 18 overruns 0  carrier 0  collisions 0
+
+enx0826ae35f08d: <span class="nv">flags</span><span class="o">=</span>4099&lt;UP,BROADCAST,MULTICAST&gt;  mtu 1500
+        ether 08:26:ae:35:f0:8d  txqueuelen 1000  <span class="o">(</span>Ethernet<span class="o">)</span>
+        RX packets 0  bytes 0 <span class="o">(</span>0.0 B<span class="o">)</span>
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 <span class="o">(</span>0.0 B<span class="o">)</span>
+        TX errors 0  dropped 2 overruns 0  carrier 0  collisions 0
+
+lo: <span class="nv">flags</span><span class="o">=</span>73&lt;UP,LOOPBACK,RUNNING&gt;  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10&lt;host&gt;
+        loop  txqueuelen 1000  <span class="o">(</span>Local Loopback<span class="o">)</span>
+        RX packets 1089779  bytes 4159784997 <span class="o">(</span>4.1 GB<span class="o">)</span>
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 1089779  bytes 4159784997 <span class="o">(</span>4.1 GB<span class="o">)</span>
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+wlo1: <span class="nv">flags</span><span class="o">=</span>4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt;  mtu 1500
+        inet 192.168.31.182  netmask 255.255.255.0  broadcast 192.168.31.255
+        inet6 fe80::5ded:4ab:d586:b60c  prefixlen 64  scopeid 0x20&lt;<span class="nb">link</span><span class="o">&gt;</span>
+        ether 50:e0:85:e8:58:0f  txqueuelen 1000  <span class="o">(</span>Ethernet<span class="o">)</span>
+        RX packets 3582838  bytes 4974553253 <span class="o">(</span>4.9 GB<span class="o">)</span>
+        RX errors 0  dropped 6  overruns 0  frame 0
+        TX packets 788343  bytes 101990756 <span class="o">(</span>101.9 MB<span class="o">)</span>
+        TX errors 0  dropped 34 overruns 0  carrier 0  collisions 0
+
+</code></pre></div></div>
+
+<p>输入以下命令进行转发配置：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>iptables <span class="nt">-t</span> nat <span class="nt">-A</span> POSTROUTING <span class="nt">-o</span> wlo1 <span class="nt">-j</span> MASQUERADE
+<span class="nv">$ </span><span class="nb">sudo </span>iptables <span class="nt">-A</span> FORWARD <span class="nt">-i</span> eno1 <span class="nt">-o</span> wlo1 <span class="nt">-j</span> ACCEPT
+<span class="nv">$ </span><span class="nb">sudo </span>iptables <span class="nt">-A</span> FORWARD <span class="nt">-i</span> wlo1 <span class="nt">-o</span> eno1 <span class="nt">-m</span> state <span class="nt">--state</span> RELATED,ESTABLISHED <span class="nt">-j</span> ACCEPT
+<span class="nv">$ </span><span class="nb">sudo </span>netfilter-persistent save
+</code></pre></div></div>
+
+<p>随后在单板端创建文件/etc/netplan/50-cloud-init.yaml，内容如下</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">network</span><span class="pi">:</span>
+    <span class="na">version</span><span class="pi">:</span> <span class="m">2</span>
+    <span class="na">ethernets</span><span class="pi">:</span>
+        <span class="na">eth0</span><span class="pi">:</span>
+            <span class="na">addresses</span><span class="pi">:</span> <span class="pi">[</span><span class="nv">10.42.0.218/24</span><span class="pi">]</span>  <span class="c1"># 与PC同子网</span>
+            <span class="na">routes</span><span class="pi">:</span>
+              <span class="pi">-</span> <span class="na">to</span><span class="pi">:</span> <span class="s">0.0.0.0/0</span>
+                <span class="na">via</span><span class="pi">:</span> <span class="s">10.42.0.1</span>  <span class="c1"># PC的有线IP</span>
+            <span class="na">nameservers</span><span class="pi">:</span>
+                <span class="na">addresses</span><span class="pi">:</span> <span class="pi">[</span><span class="nv">8.8.8.8</span><span class="pi">,</span> <span class="nv">1.1.1.1</span><span class="pi">]</span>  <span class="c1"># 手动指定DNS</span>
+</code></pre></div></div>
+
+<p>使能刚才的配置并确认已经转发到对应端口并尝试ping外网</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>netplan apply
+<span class="nv">$ </span>ip route show | <span class="nb">grep </span>default
+default via 10.42.0.1 dev enP4p65s0 proto dhcp metric 100
+<span class="nv">$ </span>ping baidu.com
+ING baidu.com <span class="o">(</span>110.242.68.66<span class="o">)</span> 56<span class="o">(</span>84<span class="o">)</span> bytes of data.
+64 bytes from baidu.com <span class="o">(</span>110.242.68.66<span class="o">)</span>: <span class="nv">icmp_seq</span><span class="o">=</span>1 <span class="nv">ttl</span><span class="o">=</span>49 <span class="nb">time</span><span class="o">=</span>84.8 ms
+64 bytes from baidu.com <span class="o">(</span>110.242.68.66<span class="o">)</span>: <span class="nv">icmp_seq</span><span class="o">=</span>3 <span class="nv">ttl</span><span class="o">=</span>49 <span class="nb">time</span><span class="o">=</span>101 ms
+</code></pre></div></div>
+
+<h2 id="0x01-device-tree">0x01 Device Tree</h2>
+
+<h3 id="dt-basics">DT basics</h3>
+
+<p><img src="/home/songyj/note/pics/dts_description.png" alt="" /></p>
+
+<p>冒号之前的是Lable，相当于节点的别名，如果后续需要修改节点的的property可以通过引用别名来追加修改或者新建property。</p>
+
+<p><img src="/home/songyj/note/pics/dts_label_add_property.png" alt="" /></p>
+
+<p>看一个例子，下面是截取rock5B的RGB LED的设备树节点。结合原理图可以确认user-led2是控制蓝色LED的引脚，RK_PB7和GPIO_ACTIVE_HIGH代表引脚编号以及电平设置，这两个宏定义在dt-binding相关的文档。这些格式都是内核文档中已经规定好的，在<strong>Documentation/devicetree/bindings</strong>中搜索具体的规则。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// arch/arm64/boot/dts/rockchip/rk3588-rock-5b.dts</span>
+<span class="o">/</span><span class="p">{</span>
+	<span class="p">...</span>
+	
+	<span class="n">gpio</span><span class="o">-</span><span class="n">leds</span> <span class="p">{</span>
+        <span class="n">compatible</span> <span class="o">=</span> <span class="s">"gpio-leds"</span><span class="p">;</span>
+        <span class="n">pinctrl</span><span class="o">-</span><span class="n">names</span> <span class="o">=</span> <span class="s">"default"</span><span class="p">;</span>
+
+        <span class="n">user</span><span class="o">-</span><span class="n">led2</span> <span class="p">{</span>
+            <span class="n">gpios</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">gpio0</span> <span class="n">RK_PB7</span> <span class="n">GPIO_ACTIVE_HIGH</span><span class="o">&gt;</span><span class="p">;</span>
+            <span class="n">linux</span><span class="p">,</span><span class="k">default</span><span class="o">-</span><span class="n">trigger</span> <span class="o">=</span> <span class="s">"heartbeat"</span><span class="p">;</span>
+            <span class="k">default</span><span class="o">-</span><span class="n">state</span> <span class="o">=</span> <span class="s">"on"</span><span class="p">;</span>
+    	<span class="p">};</span>
+	<span class="p">};</span>
+	
+	<span class="p">...</span>
+<span class="p">}</span>
+
+<span class="c1">// include/dt-bindings/pinctrl/rockchip.h</span>
+<span class="cp">#define RK_PB7		15
+</span>
+<span class="c1">// include/dt-bindings/gpio/gpio.h</span>
+<span class="cp">#define GPIO_ACTIVE_HIGH 0
+</span></code></pre></div></div>
+
+<p><img src="/home/songyj/note/pics/rk5b_rgb_led_sch.png" alt="" /></p>
+
+<h3 id="cells">cells</h3>
+
+<p>DeveiceTree中有个比较重要的概念<strong>cells</strong>，<strong>cells</strong>表示property相关的32bits的数字。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x50027000</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0x4</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0x500273f0</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0x10</span><span class="o">&gt;</span><span class="p">;</span>	<span class="c1">// 4 entriy 4 cell</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x50027000</span> <span class="mh">0x4</span> <span class="mh">0x500273f0</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0x10</span><span class="o">&gt;</span><span class="p">;</span>			<span class="c1">// 2 entriy 4 cell</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x50027000</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0x4</span> <span class="mh">0x500273f0</span> <span class="mh">0x10</span><span class="o">&gt;</span><span class="p">;</span>			<span class="c1">// 2 entriy 4 cell</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x50027000</span> <span class="mh">0x4</span> <span class="mh">0x500273f0</span> <span class="mh">0x10</span><span class="o">&gt;</span><span class="p">;</span>				<span class="c1">// 1 entriy 4 cell</span>
+</code></pre></div></div>
+
+<p>cells如何规定怎么填写property值，以下面设备树为例：在spi3节点中使用到之前定义的三个外设节点intc，rcc以及dmamux1，他们的cells与后面spi3使用时正好对应（注意类似<em>&amp;rcc</em>和<em>&amp;dmamux1</em>不是cell，因为他们不是和property相关的值，不计入cells数量）</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// 定义三个外设</span>
+<span class="n">intc</span><span class="o">:</span> <span class="n">interrupt</span><span class="o">-</span><span class="n">controller</span><span class="err">@</span><span class="n">a0021000</span> <span class="p">{</span>
+    <span class="n">compatible</span> <span class="o">=</span> <span class="s">"arm,cortex-a7-gic"</span><span class="p">;</span>
+    <span class="cp">#interrupt-cells = &lt;3&gt;;
+</span>    <span class="n">interrupt</span><span class="o">-</span><span class="n">controller</span><span class="p">;</span>
+    <span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0xa0021000</span> <span class="mh">0x1000</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="mh">0xa0022000</span> <span class="mh">0x2000</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">};</span>
+<span class="n">rcc</span><span class="o">:</span> <span class="n">rcc</span><span class="err">@</span><span class="mi">50000000</span> <span class="p">{</span>
+    <span class="n">compatible</span> <span class="o">=</span> <span class="s">"st,stm32mp1-rcc"</span><span class="p">,</span> <span class="s">"syscon"</span><span class="p">;</span>
+    <span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x50000000</span> <span class="mh">0x1000</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="cp">#clock-cells = &lt;1&gt;;
+</span>    <span class="cp">#reset-cells = &lt;1&gt;;
+</span><span class="p">};</span>
+<span class="n">dmamux1</span><span class="o">:</span> <span class="n">dma</span><span class="o">-</span><span class="n">router</span><span class="err">@</span><span class="mi">48002000</span> <span class="p">{</span>
+    <span class="n">compatible</span> <span class="o">=</span> <span class="s">"st,stm32h7-dmamux"</span><span class="p">;</span>
+    <span class="n">reg</span> <span class="o">=</span> <span class="o">&lt;</span><span class="mh">0x48002000</span> <span class="mh">0x1c</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="cp">#dma-cells = &lt;3&gt;;
+</span>    <span class="n">clocks</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">rcc</span> <span class="n">DMAMUX</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="n">resets</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">rcc</span> <span class="n">DMAMUX_R</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="c1">// spi3需要配置这三个外设</span>
+<span class="n">spi3</span><span class="o">:</span> <span class="n">spi</span><span class="err">@</span><span class="mi">4000</span><span class="n">c000</span> <span class="p">{</span>
+    <span class="n">interrupts</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">GIC_SPI</span> <span class="mi">51</span> <span class="n">IRQ_TYPE_LEVEL_HIGH</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="n">clocks</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">rcc</span> <span class="n">SPI3_K</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="n">resets</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">rcc</span> <span class="n">SPI3_R</span><span class="o">&gt;</span><span class="p">;</span>
+    <span class="n">dmas</span> <span class="o">=</span> <span class="o">&lt;&amp;</span><span class="n">dmamux1</span> <span class="mi">61</span> <span class="mh">0x400</span> <span class="mh">0x05</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;&amp;</span><span class="n">dmamux1</span> <span class="mi">62</span> <span class="mh">0x400</span> <span class="mh">0x05</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<h3 id="dtb使用">DTB使用</h3>
+
+<ul>
+  <li>设备树编译命令</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dtc -@ <span class="nt">-I</span> dts <span class="nt">-O</span> dtb <span class="nt">-o</span> ./gpio.dtbo ./gpio.dts
+</code></pre></div></div>
+
+<ul>
+  <li>使能自己的dtbo</li>
+</ul>
+
+<p><strong>方法1：/boot/extlinux/extlinux.conf</strong></p>
+
+<p>这个配置文件是uboot的启动参数，l0是默认启动参数，l0r是recovery启动参数，添加<em>fdtoverlays /lib/firmware/5.10.0-1012-rockchip/device-tree/rockchip/gpio.dtbo</em>指定要加载的dtbo文件。设置好路径之后重启设备，在<em>/sys/firmware/devicetree/base</em>中检查有没有对应的节点。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">## /boot/extlinux/extlinux.conf</span>
+<span class="c">##</span>
+<span class="c">## IMPORTANT WARNING</span>
+<span class="c">##</span>
+<span class="c">## The configuration of this file is generated automatically.</span>
+<span class="c">## Do not edit this file manually, use: u-boot-update</span>
+
+default l0
+menu title U-Boot menu
+prompt 1
+<span class="nb">timeout </span>20
+
+label l0
+        menu label Ubuntu 22.04.5 LTS 5.10.0-1012-rockchip
+        linux /boot/vmlinuz-5.10.0-1012-rockchip
+        initrd /boot/initrd.img-5.10.0-1012-rockchip
+        fdtdir /lib/firmware/5.10.0-1012-rockchip/device-tree/
+        fdtoverlays /lib/firmware/5.10.0-1012-rockchip/device-tree/rockchip/overlay/gpio.dtbo
+
+        append <span class="nv">root</span><span class="o">=</span><span class="nv">UUID</span><span class="o">=</span>cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw <span class="nv">console</span><span class="o">=</span>ttyS2,1500000 <span class="nv">console</span><span class="o">=</span>tty1 <span class="nv">cgroup_enable</span><span class="o">=</span>cpuset <span class="nv">cgroup_memory</span><span class="o">=</span>1 <span class="nv">cgroup_enable</span><span class="o">=</span>memory quiet splash plymouth.ignore-serial-consoles
+
+label l0r
+        menu label Ubuntu 22.04.5 LTS 5.10.0-1012-rockchip <span class="o">(</span>rescue target<span class="o">)</span>
+        linux /boot/vmlinuz-5.10.0-1012-rockchip
+        initrd /boot/initrd.img-5.10.0-1012-rockchip
+        fdtdir /lib/firmware/5.10.0-1012-rockchip/device-tree/
+        append <span class="nv">root</span><span class="o">=</span><span class="nv">UUID</span><span class="o">=</span>cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw <span class="nv">console</span><span class="o">=</span>ttyS2,1500000 <span class="nv">console</span><span class="o">=</span>tty1 <span class="nv">cgroup_enable</span><span class="o">=</span>cpuset <span class="nv">cgroup_memory</span><span class="o">=</span>1 <span class="nv">cgroup_enable</span><span class="o">=</span>memory splash plymouth.ignore-serial-consoles single
+</code></pre></div></div>
+
