@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2025-04-15T21:04:19+08:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
-</subtitle><author><name>Songyj</name></author><entry><title type="html">Linux_driver</title><link href="http://localhost:4000/linux-driver.html" rel="alternate" type="text/html" title="Linux_driver" /><published>2025-04-05T00:00:00+08:00</published><updated>2025-04-05T00:00:00+08:00</updated><id>http://localhost:4000/Linux_Driver</id><content type="html" xml:base="http://localhost:4000/linux-driver.html"><![CDATA[<h1 id="linux-driver">Linux Driver</h1>
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-15T21:31:04+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
+</subtitle><author><name>Songyj</name></author><entry><title type="html">Linux_driver</title><link href="https://songyj123.github.io/linux-driver.html" rel="alternate" type="text/html" title="Linux_driver" /><published>2025-04-05T00:00:00+08:00</published><updated>2025-04-05T00:00:00+08:00</updated><id>https://songyj123.github.io/Linux_Driver</id><content type="html" xml:base="https://songyj123.github.io/linux-driver.html"><![CDATA[<h1 id="linux-driver">Linux Driver</h1>
 
 <h2 id="0x00-env-setup">0x00 ENV Setup</h2>
 
@@ -247,7 +247,7 @@ label l0r
         append <span class="nv">root</span><span class="o">=</span><span class="nv">UUID</span><span class="o">=</span>cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw <span class="nv">console</span><span class="o">=</span>ttyS2,1500000 <span class="nv">console</span><span class="o">=</span>tty1 <span class="nv">cgroup_enable</span><span class="o">=</span>cpuset <span class="nv">cgroup_memory</span><span class="o">=</span>1 <span class="nv">cgroup_enable</span><span class="o">=</span>memory splash plymouth.ignore-serial-consoles single
 </code></pre></div></div>
 
-<p><strong>dtbo有时候很难给原设备树节点覆盖上</strong></p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Linux Driver]]></summary></entry><entry><title type="html">Cortex_m_note</title><link href="http://localhost:4000/cortex-m-note.html" rel="alternate" type="text/html" title="Cortex_m_note" /><published>2025-03-31T00:00:00+08:00</published><updated>2025-03-31T00:00:00+08:00</updated><id>http://localhost:4000/Cortex_M_note</id><content type="html" xml:base="http://localhost:4000/cortex-m-note.html"><![CDATA[<h1 id="cortex-m系列笔记">Cortex M系列笔记</h1>
+<p><strong>dtbo有时候很难给原设备树节点覆盖上</strong></p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Linux Driver]]></summary></entry><entry><title type="html">Cortex_m_note</title><link href="https://songyj123.github.io/cortex-m-note.html" rel="alternate" type="text/html" title="Cortex_m_note" /><published>2025-03-31T00:00:00+08:00</published><updated>2025-03-31T00:00:00+08:00</updated><id>https://songyj123.github.io/Cortex_M_note</id><content type="html" xml:base="https://songyj123.github.io/cortex-m-note.html"><![CDATA[<h1 id="cortex-m系列笔记">Cortex M系列笔记</h1>
 
 <h2 id="1-architecture">1. Architecture</h2>
 
@@ -1060,7 +1060,7 @@ main <span class="o">()</span> at main.c:3
 xPSR: 0x01000000 pc: 0x0800012c msp: 0x20008000
 <span class="o">(</span>gdb<span class="o">)</span> si
 0x0800012e <span class="k">in </span>Reset_Handler <span class="o">()</span> at startup.c:96
-</code></pre></div></div>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Cortex M系列笔记]]></summary></entry><entry><title type="html">Linux_graphic_stack</title><link href="http://localhost:4000/linux-graphic-stack.html" rel="alternate" type="text/html" title="Linux_graphic_stack" /><published>2025-01-01T00:00:00+08:00</published><updated>2025-01-01T00:00:00+08:00</updated><id>http://localhost:4000/Linux_graphic_stack</id><content type="html" xml:base="http://localhost:4000/linux-graphic-stack.html"><![CDATA[<p>[TOC]</p>
+</code></pre></div></div>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Cortex M系列笔记]]></summary></entry><entry><title type="html">Linux_graphic_stack</title><link href="https://songyj123.github.io/linux-graphic-stack.html" rel="alternate" type="text/html" title="Linux_graphic_stack" /><published>2025-01-01T00:00:00+08:00</published><updated>2025-01-01T00:00:00+08:00</updated><id>https://songyj123.github.io/Linux_graphic_stack</id><content type="html" xml:base="https://songyj123.github.io/linux-graphic-stack.html"><![CDATA[<p>[TOC]</p>
 
 <h1 id="linux---graphic-stack">Linux - Graphic stack</h1>
 
@@ -1930,7 +1930,7 @@ name <span class="s2">"fake_gpu"</span>, bus PCI
 
 <p>https://adrian.geek.nz/graphics_docs/DRM.html</p>
 
-<p>http://phd.mupuf.org/files/kr2014.pdf</p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[[TOC]]]></summary></entry><entry><title type="html">Rk3588_baremetal</title><link href="http://localhost:4000/rk3588-baremetal.html" rel="alternate" type="text/html" title="Rk3588_baremetal" /><published>2023-11-08T00:00:00+08:00</published><updated>2023-11-08T00:00:00+08:00</updated><id>http://localhost:4000/RK3588_baremetal</id><content type="html" xml:base="http://localhost:4000/rk3588-baremetal.html"><![CDATA[<h1 id="rk系列裸机">rk系列裸机</h1>
+<p>http://phd.mupuf.org/files/kr2014.pdf</p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[[TOC]]]></summary></entry><entry><title type="html">Rk3588_baremetal</title><link href="https://songyj123.github.io/rk3588-baremetal.html" rel="alternate" type="text/html" title="Rk3588_baremetal" /><published>2023-11-08T00:00:00+08:00</published><updated>2023-11-08T00:00:00+08:00</updated><id>https://songyj123.github.io/RK3588_baremetal</id><content type="html" xml:base="https://songyj123.github.io/rk3588-baremetal.html"><![CDATA[<h1 id="rk系列裸机">rk系列裸机</h1>
 
 <!--more-->
 
@@ -2492,7 +2492,7 @@ kernelvec:
 
 <h2 id="7-文件系统">7. 文件系统</h2>
 
-<p><img src="https://i.imgur.com/6cbXXE1.png" alt="file system" /></p>
+<p><img src="/image/文件系统框架.png" alt="" /></p>
 
 <h3 id="1-硬件驱动">1. 硬件驱动</h3>
 
@@ -2663,7 +2663,7 @@ find /home/user/documents <span class="nt">-type</span> f <span class="nt">-name
 
 <p><a href="https://intezer.com/blog/malware-analysis/executable-linkable-format-101-part-4-dynamic-linking/">dynamic linking</a></p>
 
-<p><a href="https://www.intel.com/content/www/us/en/docs/programmable/683711/21-2/sd-mmc-controller-42838.html">sdmmc同款ip</a></p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[rk系列裸机]]></summary></entry><entry><title type="html">Riscv_xv6</title><link href="http://localhost:4000/riscv-xv6.html" rel="alternate" type="text/html" title="Riscv_xv6" /><published>2023-05-01T00:00:00+08:00</published><updated>2023-05-01T00:00:00+08:00</updated><id>http://localhost:4000/RISCV_xv6</id><content type="html" xml:base="http://localhost:4000/riscv-xv6.html"><![CDATA[<h1 id="rvos">RVOS</h1>
+<p><a href="https://www.intel.com/content/www/us/en/docs/programmable/683711/21-2/sd-mmc-controller-42838.html">sdmmc同款ip</a></p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[rk系列裸机]]></summary></entry><entry><title type="html">Riscv_xv6</title><link href="https://songyj123.github.io/riscv-xv6.html" rel="alternate" type="text/html" title="Riscv_xv6" /><published>2023-05-01T00:00:00+08:00</published><updated>2023-05-01T00:00:00+08:00</updated><id>https://songyj123.github.io/RISCV_xv6</id><content type="html" xml:base="https://songyj123.github.io/riscv-xv6.html"><![CDATA[<h1 id="rvos">RVOS</h1>
 <!--more-->
 
 <p><a href="https://sourceware.org/binutils/docs/as/index.html">汇编器AS</a>
