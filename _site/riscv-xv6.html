@@ -1,0 +1,2121 @@
+<h1 id="rvos">RVOS</h1>
+<!--more-->
+
+<p><a href="https://sourceware.org/binutils/docs/as/index.html">汇编器AS</a>
+反汇编</p>
+
+<pre><code class="language-bash=">riscv64-unknown-elf-objdump -D -b binary -m riscv test.bin &gt; disassembly_out
+</code></pre>
+
+<h1 id="1-基础">1. 基础</h1>
+
+<h2 id="vim">vim</h2>
+
+<p>替换</p>
+
+<pre><code class="language-bash=">#全局替换整个文件中的 old 为 new
+%s/old/new/g 
+</code></pre>
+
+<h2 id="11-gcc的使用">1.1 GCC的使用</h2>
+
+<h2 id="12-gdb的使用">1.2 GDB的使用</h2>
+
+<h3 id="1-gdbinit文件">1. gdbinit文件</h3>
+
+<p>使用gdbinit文件作为默认配置文件，帮你自动输入一些命令：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">set </span>disassemble-next-line on    
+target remote localhost:1234
+layout regs
+b _start
+</code></pre></div></div>
+
+<p>要使当前的gdbinit文件生效需要将~/.gdbinit配置文件中加上当前文件的路径，否则gdbinit文件不能生效：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>add-auto-load-safe-path /home/songyj/embedded_proj/xv6-riscv/.gdbinit                                                             add-auto-load-safe-path /home/songyj/embedded_proj/rk3399/.gdbinit
+</code></pre></div></div>
+
+<p>启动gdb并使用当前的配置文件：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gdb tui ./rk3399.elf <span class="nt">-x</span> ./.gdbinit
+</code></pre></div></div>
+
+<h3 id="2-具体命令">2. 具体命令</h3>
+
+<p>examine: inspect memory contents</p>
+
+<pre><code class="language-bash=">x/nfu addr
+</code></pre>
+
+<p>n: count
+f: format
+u: unit size</p>
+
+<p>只观察thread 1到达断点</p>
+
+<pre><code class="language-bash=">break _start thread 1
+</code></pre>
+
+<p><a href="https://doc.ecoscentric.com/gnutools/doc/gdb/Threads.html">Debug Multithread Program with GDB</a></p>
+
+<p>在某个地址打断点</p>
+
+<pre><code class="language-bash=">b *0x80000000
+</code></pre>
+<p><strong><em>后面程序会运行到用户空间，想debug用户空间的程序必须要重新加载符号表!</em></strong></p>
+<pre><code class="language-c=">file ./user/first_test.out
+</code></pre>
+
+<p>调试用户空间的程序也很重要：<a href="https://www.cnblogs.com/KatyuMarisaBlog/p/13727565.html">debug用户程序</a></p>
+
+<h3 id="3-更多">3. 更多</h3>
+
+<p><a href="https://cs.brown.edu/courses/cs033/docs/guides/gdb.pdf">brown gdb cheatsheet</a></p>
+
+<h2 id="13-makefile">1.3 Makefile</h2>
+
+<p>自动化变量 <strong>Automatic varibles</strong></p>
+
+<ul>
+  <li>$@ 指代生成的目标文件 target filename</li>
+  <li>$&lt; 指代第一材料文件 1st prerequisit filename</li>
+  <li>$^ 指代所有的材料文件</li>
+</ul>
+
+<h2 id="14-linkerscript">1.4 Linkerscript</h2>
+
+<p>链接的代码段最前面的一定要自己指定好
+刚才重写了sbi的链接脚本 去掉了之前指定sbi_boot.s代码段在最前面的标号 直接所有用text表示结果gdb调试进不去 发现本来sbi_boot的代码段链接在sbi_main.c代码段后面去了</p>
+
+<h3 id="1-align">1. ALIGN()</h3>
+
+<h3 id="2-在源文件中使用链接脚本当中的变量">2. 在源文件中使用链接脚本当中的变量</h3>
+
+<pre><code class="language-linkersciprt=">_s_text = 0x80000000;
+</code></pre>
+
+<p>在c源文件中访问 <strong>_s_text</strong></p>
+
+<pre><code class="language-cpp=">extern unsigned char _s_text;
+
+unsigned char *value_in_var;
+value_in_var = &amp;_s_text;
+</code></pre>
+
+<p>可以将这个特殊的变量 <strong>_s_text</strong> 看成是一个空值的变量，他在symbol table上的对应的地址是0x80000000
+我们访问一个变量的地址用&amp;
+<a href="https://sourceware.org/binutils/docs/ld/Source-Code-Reference.html">参考</a></p>
+
+<h2 id="15-汇编和c">1.5 汇编和C</h2>
+
+<h3 id="1-汇编">1. 汇编</h3>
+
+<h4 id="大端小端-big-endianlittle-endian-讲的是字节不是位">大端小端 big endian/little endian 讲的是字节不是位</h4>
+
+<pre><code class="language-asm=">128 64 32 16 8 4 2 1 is big endian，big-end comes first
+1 2 4 8 16 32 64 128 is little endian，little-end comes first 低位字节在前面
+</code></pre>
+
+<h4 id="字节对齐-align">字节对齐 align</h4>
+
+<pre><code class="language-asm=">//字节对齐
+.align size-log-2
+</code></pre>
+
+<h4 id="存储指令">存储指令</h4>
+
+<pre><code class="language-asm=">    #存储指令
+    #sd rs1, offset(rs2)
+    #往0x80000000上写0
+    li a0, 0x80000000
+    sd zero, (a0)
+</code></pre>
+
+<h4 id="call-j-jr">call j jr</h4>
+
+<p>call和j指令需要特别注意，call是一条伪指令相当于把pc+4放入ra</p>
+
+<pre><code class="language-asm=">    #函数调用指令 call
+    call add_ab
+    #等价于
+    #ra &lt;-- pc+4
+    #j add_ab
+  
+    #函数返回指令 ret
+    ret
+    #等价于
+    #pc &lt;-- ra
+</code></pre>
+
+<p><strong>jr</strong>用于跳转寄存器里面存的地址</p>
+
+<h4 id="auipc-lui">AUIPC LUI</h4>
+
+<p>Add Upper Immediate to Program Counter
+Load Upper Immediate</p>
+
+<pre><code class="language-asm=">    #将立即数带符号左移12bits加到PC
+    auipc a5, 0x02
+    #将立即数带符号左移12bits
+    lui a5, 0x02
+</code></pre>
+
+<h3 id="2-c语法">2. C语法</h3>
+
+<p>函数指针</p>
+
+<pre><code class="language-cpp=">//func_ptr_name是一个指向函数的指针，这个函数有两个int参数，返回的值是int
+int (*func_ptr_name)(int, int);
+
+//cast
+//some_ptr是一个函数指针
+(int (*)(int, int))some_ptr;
+</code></pre>
+
+<pre><code class="language-cpp=">//函数指针数组
+//类似[SYS_fork]是索引
+static uint64 (*syscalls[])(void) = {
+[SYS_fork]    sys_fork,
+[SYS_exit]    sys_exit,
+[SYS_wait]    sys_wait,
+[SYS_pipe]    sys_pipe,
+[SYS_read]    sys_read,
+[SYS_kill]    sys_kill,
+[SYS_exec]    sys_exec,
+[SYS_fstat]   sys_fstat,
+[SYS_chdir]   sys_chdir,
+[SYS_dup]     sys_dup,
+[SYS_getpid]  sys_getpid,
+[SYS_sbrk]    sys_sbrk,
+[SYS_sleep]   sys_sleep,
+[SYS_uptime]  sys_uptime,
+[SYS_open]    sys_open,
+[SYS_write]   sys_write,
+[SYS_mknod]   sys_mknod,
+[SYS_unlink]  sys_unlink,
+[SYS_link]    sys_link,
+[SYS_mkdir]   sys_mkdir,
+[SYS_close]   sys_close,
+};
+
+//调用
+syscalls[num]();
+</code></pre>
+
+<h3 id="3-riscv的寄存器">3. riscv的寄存器</h3>
+
+<h4 id="general-reg">General reg</h4>
+
+<p>通用寄存器有别名和特殊用途</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>通用寄存器</th>
+      <th>别名</th>
+      <th>特殊用途</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>x0</td>
+      <td>zero</td>
+      <td><strong>全零寄存器</strong></td>
+    </tr>
+    <tr>
+      <td>x1</td>
+      <td>ra</td>
+      <td><strong>函数返回地址</strong></td>
+    </tr>
+    <tr>
+      <td>x2</td>
+      <td>sp</td>
+      <td><strong>stack ptr</strong></td>
+    </tr>
+    <tr>
+      <td>x3</td>
+      <td>gp</td>
+      <td><strong>globle ptr</strong></td>
+    </tr>
+    <tr>
+      <td>x5~x7, x28~x31</td>
+      <td>t0~t2, t3~t6</td>
+      <td><strong>tempories</strong> Callee可能会使用不保证在函数调用过程中不变</td>
+    </tr>
+    <tr>
+      <td>x8~x9, x18~x27</td>
+      <td>s0~s1, s2~s11</td>
+      <td><strong>saved</strong> Callee如果要使用必须在stack中备份，退出时恢复</td>
+    </tr>
+    <tr>
+      <td>x10~x11</td>
+      <td>a0~a1</td>
+      <td><strong>argument</strong> 参数寄存器 函数返回值也在里面</td>
+    </tr>
+    <tr>
+      <td>x12~x17</td>
+      <td>a2~a7</td>
+      <td><strong>argument</strong> 参数寄存器</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="csr">CSR</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>CSR</th>
+      <th>用途</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>msratch</td>
+      <td>m模式下上下文数据指针</td>
+    </tr>
+    <tr>
+      <td>mcause</td>
+      <td>m模式异常中断</td>
+    </tr>
+    <tr>
+      <td>satp</td>
+      <td>s模式页表指针</td>
+    </tr>
+    <tr>
+      <td>scause</td>
+      <td>s模式异常中断</td>
+    </tr>
+    <tr>
+      <td>sepc</td>
+      <td>s模式异常中断处理之后返回的地址</td>
+    </tr>
+    <tr>
+      <td>stvec</td>
+      <td>s模式异常中断进入的地址</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="stack-versus-heap">Stack versus Heap</h4>
+
+<p>都存在于RAM当中</p>
+
+<p>每一个线程都有自己的stack 所有的线程共享同一个heap</p>
+
+<p>stack是确定的长度不能改变 heap的长度可以改变 如果需要heap存一个新的变量但是没有足够的空间 操作系统可以分配新的空间给到heap</p>
+
+<pre><code class="language-cpp=">// 分配在数据段 如果等于0在bss 如果不等于0在data
+int someGlobalVariable;
+
+// 分配在数据段
+static int someStaticVariable;
+
+void MyFunction(int someArgument) {
+
+    // 分配在数据段
+    static int someLocalStaticVariable;
+
+    // 分配在栈上
+    int someLocalVariable;
+    int* someDynamicVariable;
+
+    // 分配在堆上
+    someDynamicVariable = new int;
+
+    delete someDynamicVariable;
+
+    return;
+}
+
+// Note that someGlobalVariable, someStaticVariable and
+// someLocalStaticVariable continue to exist, and are not
+// deallocated until the program exits.
+
+</code></pre>
+
+<h5 id="stack-trace栈回溯">stack trace(栈回溯)</h5>
+
+<p>当我们出现异常时，os通常可以打印出一系列函数调用的信息，这是怎么做到的？</p>
+
+<p>编译器使能frame pointer之后(-fno-omit-frame-pointer)，每次进入函数会有如下汇编代码生成：</p>
+
+<pre><code class="language-asm=">    #stack腾出16byte的空间
+    #先放函数返回地址ra（8byte），再放fp（8byte）
+    #此时的fp存储的是上一个函数分配的stack空间的起始地址
+    #更新fp=当前函数被分配的stack空间起始地址
+    addi sp, sp, -16
+    sd ra, 8(sp)
+    sd fp, 0(sp)
+    addi fp, sp, 16
+</code></pre>
+
+<p>stack是从高地址向低地址生长，所以在用指针去访问存储在stack当中的结构体时要注意</p>
+
+<pre><code class="language-cpp=">//将上述fp和ra看成一个结构体
+//因为stack和地址是反的 从地址的角度来看低地址放的是fp高地址放的是ra
+struct stack_frame
+{
+    unsigned long sf_fp;  
+    unsigned long sf_ra;
+};
+
+void back_trace()
+{
+    //取得当前的fp值
+    //__builtin_frame_address gcc自带特性
+    unsigned long cur_fp = __builtin_frame_address(0);
+    unsigned long pc;
+  
+    //通过结构体指针去访问stack frame
+    struct stack_frame *sf_ptr = cur_fp - 16;
+  
+    //循环条件在代码段中
+    while(sf_ptr-&gt;sf_fp &gt; &amp;_stext)
+    {
+        //返回地址减去4就是程序的调用地址
+        pc = sf_ptr-&gt;sf_ra - 4;
+        printf("pc: %p\n", pc);
+        //指向下一个stack frame
+        sf_ptr = sf_ptr-&gt;sf_fp - 16;
+    }
+}
+</code></pre>
+
+<p>思考：为什么计算机的pc每次都是+4而不是1？</p>
+
+<p>指令长度4byte</p>
+
+<h3 id="152-static-inline">1.5.2 static inline</h3>
+
+<p>在异常处理或者中断的时候经常见到调用一个函数然后然后找到这个函数发现他是<strong>static inline …</strong>里面只有一条汇编指令 感觉有点看不懂</p>
+
+<p><strong>inline关键字什么意思？</strong>
+函数定义前面加inline表示这是一个Inline Function Inline Function are those function whose definitions are small and be substituted at the place where its function call is happened.
+这种函数一般很短，转换成汇编指令可能只有一条指令。如果将它写成一个普通的函数跳转过去执行 可能跳转执行然后再返回的一串指令比这条指令本身长很多，这样执行效率会降低。</p>
+
+<p><strong>inline</strong>提示编译器可以把这条内联函数直接编译到调用他的代码出处，这样无需跳转返回的一系列指令 但是这也只是一条hint 编译器不一定会inline这个函数</p>
+
+<p><strong>为什么要前面加上static呢?</strong>
+如果只有前面的inline对于GCC来说会报错</p>
+
+<pre><code class="language-cpp=">#include &lt;stdio.h&gt;
+
+inline int add_two(int a, int b)
+{
+	return a+b;
+}
+
+int main()
+{
+	int ret;
+
+	ret = add_two(1, 3);
+	printf("output : %d", ret);
+
+	return 0;
+}
+</code></pre>
+
+<pre><code class="language-bash=">/usr/bin/ld: /tmp/ccy8plLQ.o: in function `main':
+try_inline.c:(.text+0x17): undefined reference to `add_two'
+collect2: error: ld returned 1 exit status
+</code></pre>
+
+<p>前面说到inline只是一条建议 建议编译器可以内联 但是编译器不一定会采纳
+所以这里实际的意思是告诉编译器<strong>This is an alternative function to use if you want to inline this function</strong></p>
+
+<p>在rk3399中读取pc寄存器的值只使用static inline并没有内联还是跳转到了函数的位置：
+<img src="https://hackmd.io/_uploads/rkm6WamSh.png" alt="" /></p>
+
+<p>内联汇编之后之前的r_pc()函数就消失了，所以程序的地址也发生了改变：</p>
+
+<p><img src="https://hackmd.io/_uploads/By0TbTmBn.png" alt="" /></p>
+
+<p>加上static则可以避免这个错误，让编译器把这个函数当作internal linkage</p>
+
+<blockquote>
+  <p>If you don’t put <strong>static</strong> there, you’re defining an inline function with external linkage without instantiating an external definition.</p>
+</blockquote>
+
+<p><strong>如何强制inline一个函数呢？</strong></p>
+
+<p>GCC提供了<strong>attribute((always_inline))</strong></p>
+<pre><code class="language-c=">static inline __attribute__((always_inline)) unsigned long r_pc()
+{
+	unsigned long x;
+
+	asm volatile(
+			"adr %0, ."
+			: "=r" (x)
+			:
+			:
+				);
+
+	return x;
+}
+</code></pre>
+
+<p><a href="https://gcc.gnu.org/onlinedocs/gcc/Inline.html">gcc/Inline</a></p>
+
+<h3 id="153-uart输出字符串的写法对比">1.5.3 UART输出字符串的写法对比</h3>
+
+<pre><code class="language-cpp=">void uart_send_string(char *str)
+{
+  char *string_ptr = str;
+
+  while(*string_ptr != '\0')
+  {
+    uart_send_char(*string_ptr);
+    string_ptr++;
+  }
+}
+</code></pre>
+
+<pre><code class="language-cpp=">void uart_puts(char *s)                                       
+{                                                             
+  while (*s) {                                                
+    uart_putc(*s++);                                          
+  }                                                           
+} 
+</code></pre>
+
+<p>涉及到 <strong>i++</strong> <strong>++i</strong> 的区别
+i++先返回值后inc
+++i先inc后返回值
+<strong>++i</strong>是加一之后的值 <strong>i++</strong> 是加一之前的值</p>
+
+<h3 id="154-printf的实现">1.5.4 printf的实现</h3>
+
+<p>实现完串口的输出，发现rvos和xv6都还实现了printf函数，这个看起来好像比较简单先实现一下这个文件</p>
+
+<h4 id="可变参数函数-variadic-function-in-c">可变参数函数 (variadic function in c)</h4>
+
+<p>此处涉及到的宏定义暂不深究
+va_list
+va_start()
+va_arg()
+va_end()</p>
+
+<pre><code class="language-cpp=">#include &lt;stdarg.h&gt;
+
+//...表示数量不定的参数
+void printf(char *format, ...)
+{
+    va_list args;
+    va_start(args, format);    //va_start的第二个参数是...之前的参数，即最后一个确定的参数
+  
+    for(; *format!=0;)
+    {
+        //va_arg()执行一次会返回一个参数值，然后指到下一个参数
+        //解析格式字符串的%标记以及后面的字符来确定打印类型
+        if(*fmt == '%')
+        {
+            switch(*(++fmt))
+            {
+                case 'd':
+                {
+                    va_arg(args, 可变参数类型（int，char，float ...）);
+                    //分别根据单独的数据类型输出
+                    break;
+                }
+                case 'x':
+                {
+                    va_arg(args, 可变参数类型（int，char，float ...）);
+                    break;
+                }
+                case 'p':
+                {
+                    va_arg(args, 可变参数类型（int，char，float ...）);
+                    break;
+                }
+                default：
+                {
+                    //处理特殊情况
+                    break;
+                }
+                
+                //指向下一个字符
+                format++;                    
+            }
+        }
+        else
+        {
+            uart_send_char(*format++);
+        }  
+    }
+  
+    va_end(args);
+}
+</code></pre>
+
+<h3 id="155-杂">1.5.5 杂</h3>
+
+<h4 id="固定串口设备的串口号并设置权限">固定串口设备的串口号并设置权限</h4>
+
+<p>每次sudo chmod太麻烦，用udev规则自动完成设置</p>
+
+<pre><code class="language-bash=">lsusb 查看usb设备信息
+sudo vim /etc/udev/rules.d/99-serial-ports.rules #设置udev规则表 默认两位数字开头 越小优先级越高
+添加 SUBSYSTEM=="tty", ATTRS{idVendor}=="xxxx", ATTRS{idProduct}=="yyyy", MODE="0666"
+sudo udevadm control --reload-rules
+</code></pre>
+
+<h1 id="2-trap异常的处理">2. Trap（异常的处理）</h1>
+
+<p>调riscv板子的时候经常看到opensbi，但是又不知道opensbi干嘛的。只知道opensbi引导uboot，uboot再引导内核</p>
+
+<h3 id="21-sbi服务">2.1 sbi服务</h3>
+
+<p>为运行在S模式的操作系统提供特权服务接口，sbi固件是运行在M模式的权限最高。
+为处于低级别的程序提供访问重要硬件的接口</p>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />架构图</li>
+</ul>
+
+<h3 id="22-sbi系统调用是异常的一种">2.2 sbi系统调用是异常的一种</h3>
+
+<p>mcause寄存器有两个字段分别表示异常类型和中断类型</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Interrupt</th>
+      <th>Exception Code</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1表示中断 0表示异常</td>
+      <td>具体的中断或者异常类型</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>其中9号异常表示来自S模式的系统调用，通俗来说就是运行在S模式的操作系统通过上边提到的sbi服务接口完成了一些只能在M模式下面做的事情。</p>
+
+<p>我们只需要顺清楚这里面的一种服务就可以知道他整个机制是如何运行的。</p>
+
+<h3 id="23-异常过程sbi系统调用为例">2.3 异常过程（sbi系统调用为例）</h3>
+
+<p>sbi服务是软件产生的异常，那么如何产生呢？</p>
+
+<h4 id="231-ecall指令">2.3.1 ECALL指令</h4>
+
+<p>a0~a5存放形参 a7存放系统调用号，区分是哪个Syscall</p>
+
+<p>ecall会提升特权模式 在s mode下使用会提升到m mode 并且PC跳转到mtvec指向的地址</p>
+
+<pre><code class="language-cpp=">#define SBI_CALL(which, arg0, arg1, arg2) ({      \
+  register unsigned long a0 asm ("a0") = (unsigned long)(arg0); \
+  register unsigned long a1 asm ("a1") = (unsigned long)(arg1); \
+  register unsigned long a2 asm ("a2") = (unsigned long)(arg2); \
+  register unsigned long a7 asm ("a7") = (unsigned long)(which);  \
+  asm volatile ("ecall"         \
+          : "+r" (a0)       \
+          : "r" (a1), "r" (a2), "r" (a7)    \
+          : "memory");        \
+  a0;             \
+})
+</code></pre>
+
+<p>在调用之前首先需要在sbi程序中设置好跳转地址。</p>
+
+<pre><code class="language-cpp=">void sbi_trap_init()
+{
+  w_mtvec(sbi_exception_vec);
+  w_mie(0);
+}
+</code></pre>
+
+<p>根据sbi_trap_init()代码，程序在执行ecall之后会跳转到sbi_exception_vec()这个函数这里，这是一个统一的入口函数，微机原理里面就学过，进入中断需要保存现场，这里ecall跳转的sbi_exception_vec()函数其实就算是中断处理函数。</p>
+
+<ol>
+  <li>保存上下文(context)</li>
+  <li>切换sp</li>
+  <li>根据具体的系统调用功能执行相应的函数</li>
+  <li>恢复上下文</li>
+  <li>切换sp</li>
+  <li>根据mepc返回继续执行</li>
+</ol>
+
+<h4 id="232-user模式下系统调用流程示意图">2.3.2 USER模式下系统调用流程示意图</h4>
+
+<p><img src="https://i.imgur.com/CDQdXyl.png" alt="" /></p>
+
+<h4 id="233-系统调用中传递参数">2.3.3 系统调用中传递参数</h4>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />kernel调用sbi的服务 kernel中使用ecall</li>
+</ul>
+
+<p>有的系统调用有参数，比如最简单的sleep(),sleep()的参数是休眠的时钟周期比如sleep(1000)，那在用户空间里面使用的参数怎么样传递到内核中去的呢？</p>
+
+<p>根据riscv的函数调用标准，参数是存放在a0～a7当中的，这里sleep的参数休眠周期就会存放在a0中，回顾ecall指令发生时，第一步保存上下文将所有的寄存器全部放在trapframe当中，所以当执行到具体的syscall函数时：</p>
+
+<pre><code class="language-c=">argraw(int n)
+{
+    struct proc *p = myproc();
+    switch (n) 
+    {
+        case 0:
+            return p-&gt;trapframe-&gt;a0;
+        case 1:
+            return p-&gt;trapframe-&gt;a1;
+        case 2:
+            return p-&gt;trapframe-&gt;a2;
+        case 3:
+            return p-&gt;trapframe-&gt;a3;
+        case 4:
+            return p-&gt;trapframe-&gt;a4;
+        case 5:
+            return p-&gt;trapframe-&gt;a5;
+    }
+    panic("argraw");
+    return -1;
+}
+
+
+sys_sleep()
+{
+    int time_interval;
+    ...
+    time_interval = argraw(n);
+    ...
+}
+</code></pre>
+
+<p>虽然sys_sleep()本身没有参数，但是函数在一开始就通过读取trapframe的方式，获得了用户空间中的参数。</p>
+
+<h3 id="24-注意">2.4 注意</h3>
+
+<p>在调试s模式的异常时，写好了s模式下的中断处理函数但是没有trap到s模式的中断处理函数，直接到了m模式的中断处理函数。重新看书才发现：</p>
+
+<blockquote>
+  <p>委托异常与中断：
+中断和异常触发之后默认M模式下进行处理，我们通常吧常用的异常和中断委托给S模式，这样才会跳转到S模式的异常向量表中去。</p>
+</blockquote>
+
+<h3 id="xv6中断过程">xv6中断过程</h3>
+
+<p>timervec
+1.在CMP填入新值
+2.置位SSIP</p>
+
+<h4 id="中断分类">中断分类</h4>
+
+<p>软件中断 定时器中断 外部中断 调试中断</p>
+
+<p>0x0d号中断 一般都是页表映射没设置好 导致找不到页面</p>
+
+<h3 id="25-trapframe-trampoline">2.5 trapframe trampoline</h3>
+
+<p>swtch保存上下文和uservec保存上下文为什么不一样？
+swtch只保存了ra sp + s系列寄存器
+uservec保存了所有</p>
+
+<p><strong>trapframe</strong>用于保存用户进程的上下文，kernel进程的上下文则在自己的stack中保存，所以kernel进程是没有<strong>trapframe</strong>的。</p>
+
+<h3 id="26-xv6-roadmap">2.6 xv6 roadmap</h3>
+
+<p>软件中断还有问题？scheduler如何切换回去 scheduler如何到usertrap</p>
+
+<p><img src="https://i.imgur.com/ITmIldM.png" alt="xv6 roadmap" /></p>
+
+<h3 id="27-sleep和wakeup">2.7 sleep()和wakeup()</h3>
+
+<h3 id="28-问题记录">2.8 问题记录</h3>
+
+<ol>
+  <li>在测试串口中断时，串口中断标志位清除不了
+最开始没有加入串口接收终端，但是但后期发现必须要有一个shell来执行命令才能运行更多的user程序测试多进程的一些东西。最后突然发现是没有读取接收数据缓存寄存器。。。</li>
+</ol>
+
+<h1 id="3-page-table">3. Page Table</h1>
+
+<h2 id="31-为什么要有虚拟地址">3.1 为什么要有虚拟地址？</h2>
+
+<p>试想有个一64K大小的程序需要运行在ram只有32K大小的电脑中，ram没有办法装入整个程序，我们应当如何让这个程序跑起来？
+程序当中的内容不是所有的都对当前程序的正常运作有关系，我们可以将程序分成固定大小的page例如4K，那么64K程序可以分成16个page，分别标号0到15。同样的，我们将ram也分成4k大小的page并称为page frame，得到page frame 0～7。按照程序的需求将page和page frame对应起来，将需要用的page和page frame对应起来，即把需要的page里面的内容加载到对应的page frame处。</p>
+
+<p>这样程序就跑起来了。但是64K大小的程序实际上只有32K的内容被加载到RAM当中，万一运行到没有加载的page的指令怎么办？此时这条指令的地址（虚拟地址）被传到MMU，MMU通过page号段查找到对应的PTE，发现根据PTE标志位段显示，这个地址所处的page没有被映射到page frame，触发page fault异常，异常处理会取消一对对应关系，重新将这个page映射一个page frame上，退出异常后再次寻址可以继续执行。</p>
+
+<h2 id="32-虚拟地址组成">3.2 虚拟地址组成</h2>
+
+<p><strong>sv39分页机制</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>最高25bits保留</th>
+      <th>27bits</th>
+      <th>12bits</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>保留</strong></td>
+      <td>page号</td>
+      <td>offset</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>12位的offset</strong>用于寻址<strong>4K</strong>的地址
+<strong>27位page号n</strong>说明这个地址位于<strong>第n个page</strong>，同时page table的 <strong>第n条目(PTE)</strong> 存储了page n的映射关系</p>
+
+<p><strong>PTE (page table entry)</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>PPN (physical page number) page frame号</th>
+      <th>标志位 (eg.映射没映射)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>44bits</td>
+      <td>10bits</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>44bits的page frame和12bits的offset可以在RAM上寻址。</p>
+
+<h2 id="33-多级页表">3.3 多级页表</h2>
+
+<p>按照4k的分页方法，32位机器：</p>
+
+<blockquote>
+  <p>2^32 /4/1024=2^20=1048576</p>
+</blockquote>
+
+<p>我们需要有1048576条PTE，这么大的页表放在RAM中是不可接受的，64位更多。</p>
+
+<h2 id="34-tlbtranslation-lookaside-buffers">3.4 TLB(Translation Lookaside Buffers)</h2>
+
+<blockquote>
+  <p>Most programs tend to make a large number of references to a small number of pages, and not the other way around.</p>
+</blockquote>
+
+<h2 id="35-页表创建流程">3.5 页表创建流程</h2>
+
+<p><img src="/home/songyj/pics/pagetable_alloc.png" alt="" /></p>
+
+<ol>
+  <li>分配4K空间，用于存放pagetable
+4096byte/8byte=512 有512条PTE
+在linker.ld当中给pagetable直接分配4k空间，放在数据段最后面。</li>
+</ol>
+
+<pre><code class="language-linker=">    ...
+  
+    _sdata = .;
+    .data :
+    {
+        *(.data)
+    }
+    . = ALIGN(4096);
+    _pgt_start = .;
+    . += 4096;
+    _edata = .;
+  
+    ...
+</code></pre>
+
+<pre><code class="language-cpp=">//定义pgt_t是指向unsigned int的指针
+typedef unsigned long *pgt_t;
+typedef unsigned long pte_t;
+</code></pre>
+
+<p>PTE是最末一级页表的一个条目，这些页表都可以看作是一个数组，每个pte都是一个元素：
+<strong>unsigned long pagetable[512];</strong></p>
+
+<pre><code class="language-cpp=">//walk函数返回指向具体页表项(PTE)的指针
+//walk函数可以让我们走到最末尾的元素上去
+pte_t *walk(pgt_t pagetable, unsigned long va, int alloc);
+</code></pre>
+
+<p>一开始我们只有虚拟地址假设是0x80200000以及一个根页表也就是上面linkerscript中分配的空间</p>
+
+<pre><code class="language-clike=">extern unsigned long _pgt_start[];
+pgt_t pagetable = _pgt_start[];
+unsigned long va = 0x80200000;
+
+pte_t *walk(pagetable, va, 1);
+</code></pre>
+
+<p><strong>虚拟地址示意:</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>最高25bits保留</th>
+      <th>9bits</th>
+      <th>9bits</th>
+      <th>9bits</th>
+      <th>12bits</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>保留</strong></td>
+      <td>2级</td>
+      <td>1级</td>
+      <td>0级</td>
+      <td>offset</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>根据2级目录寻找1级目录的位置，根据1级目录寻找0级目录的位置，而0级目录里面存放的就是我们真正的PTE</p>
+
+<pre><code class="language-cpp=">//伪代码
+9bits = va&gt;&gt;12&gt;&gt;(9*level) &amp; 0x1FF;
+
+//marco
+#define MASK 0x1FF
+#define OFFSET 12
+#define GET_NINE_BITS(va, level) ((va&gt;&gt;OFFSET&gt;&gt;(9*level)) &amp; MASK)
+</code></pre>
+
+<p>若只考虑页表已经建立好，我们只来寻找最末PTE：</p>
+
+<pre><code class="language-cpp=">pte_t *walk(pgt_t pagetable, unsigned long va, int alloc)
+{
+    pgt_t pgt_ptr;
+    pte *pte_ptr;
+  
+    for(int level=2; level&gt;0; level--)
+    {
+        pgt_ptr = &amp;pagetable[GET_NINE_BITS(va, level)];
+    
+        //如果这个条目是valid
+        if(*pgt_ptr | PG_V)
+        {
+            //取出存放的物理页号PPN 无符号右移10位 最末10位是flags
+            //根据PPN得到下一个页表的首地址 左移12位
+            pgt_ptr = ((unsigned long)(*pgt_ptr))&gt;&gt;10&lt;&lt;12;
+        }
+    } 
+  
+    pte_ptr = &amp;pagetable[GET_NINE_BITS(va, 0)]
+  
+    return pte_ptr;
+}
+</code></pre>
+
+<p>加入页表没有建立好的情况</p>
+
+<pre><code class="language-cpp=">pte_t *walk(pgt_t pagetable, unsigned long va, int alloc)
+{
+    pgt_t pgt_ptr;
+  
+    for(int level=2; level&gt;0; level--)
+    {
+        pgt_ptr = &amp;pagetable[GET_NINE_BITS(va, level)];
+    
+        //如果这个条目是valid
+        if(*pgt_ptr | PTE_V)
+        {
+            //取出存放的物理页号PPN 无符号右移10位 最末10位是flags
+            //根据PPN得到下一个页表的首地址 左移12位
+            pagetable = ((unsigned long)(*pgt_ptr))&gt;&gt;10&lt;&lt;12;
+        }
+        //这个条目不存在
+        else
+        {
+            //允许分配且有内存可分配
+            if(alloc || (pagetable=kalloc())==1)
+            {
+                memset(pagetable, 0, 4096);
+                //回填
+                *pte_ptr = (((unsigned long)pagetable)&gt;&gt;12&lt;&lt;10) | PTE_V;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+    } 
+    
+    pte_ptr = &amp;pagetable[GET_NINE_BITS(va, 0)];
+    return pte_ptr;
+}
+</code></pre>
+
+<h2 id="36-进程的pagetable">3.6 进程的Pagetable</h2>
+
+<p>xv6采取的方式是内核有一个kernel pagetable，每一个进程有自己的process pagetable</p>
+
+<blockquote>
+  <p>Having a separate page table for each process is necessary for <strong>process isolation</strong> as they should not be allowed to stomp on each others memory.</p>
+</blockquote>
+
+<p>每个进程都有自己的stack，如何检测到stcakoverflow呢？
+我们注意到xv6每个stack之间都有guardian page，超出会访问guardian page造成page fault</p>
+
+<blockquote>
+  <p>不同的进程可以使用相同的虚拟地址，但经过各自page table映射到不同的物理地址，彼此不会干扰。</p>
+</blockquote>
+
+<h2 id="37-address-space">3.7 Address Space</h2>
+
+<blockquote>
+  <p>Like those other systems, upon a context switch, the user portion of the currently-running address space changes; the kernel portion is the same across processes.</p>
+</blockquote>
+
+<h2 id="38-问题">3.8 问题</h2>
+
+<ol>
+  <li>在加入新的文件之后，页表不能正确切换，有些已经建立的页表映射没有成功显示
+最后定位到新加入文件bss段的一个变量，发现这个变量长度超过一个值就不能建立完整的页表映射，但是很说不通，最后发现linkerscript里面将根页表的起始地址和bss段重合了，在没加入这个新文件之前恰好没有影响到页表的建立。</li>
+</ol>
+
+<h1 id="4-进程-process">4. 进程 (Process)</h1>
+
+<h2 id="41-启动第一个进程">4.1 启动第一个进程</h2>
+
+<p>目前为止，内核的页表kernel pagetable已经设置好了，映射了整个DDR，即从0x80000000开始的128M地址空间。还映射了UART的位置0x10000000，大小为0x1000。trap的流程也走通了，m模式委托异常和中断给s模式，可以实现一些简单系统调用，例如打印等。但是我们其实现在仍然处于S模式，要知道用户程序肯定是在u模式当中运行的。接下来就应该从kernel启动一个init进程，而且这个init进程应该运行在u模式，并且这个用户程序可以通过系统调用或者中断的形式trap到s模式进行处理，处理之后还要返回到用户程序继续执行。</p>
+
+<p>kernel pagetable配置的空间是kernel address space，用户进程需要的是process address space，进程不能够看到内核的代码，这需要设置一个新的进程页表。</p>
+
+<p>而从kernel启动进程就需要我们提前设置user pagetable，随之而来的问题就是</p>
+
+<pre><code class="language-asm=">    sfence.vma zero zero
+    csrw satp a0
+    sfence.vma zero zero
+</code></pre>
+
+<p>执行完写satp寄存器之后，页表就会立刻更改，kernel space和process space如果没有把这段代码映射在相同的地方，执行就会出错cannot access</p>
+
+<p>这就是trampoline代码的位置，xv6巧妙的利用了这段代码，从内核启动第一个用户进程不久相当于用户trap到内核，处理完成后再从内核退到用户进程吗？这一过程需要做几件事情才能完成进程的顺利启动：</p>
+
+<ol>
+  <li>装载用户pagetable</li>
+  <li>保存当前kernel的context</li>
+  <li>装载用户程序的context</li>
+</ol>
+
+<p>完成上面的事情之后只需要一条</p>
+
+<pre><code class="language-asm=">    sret
+</code></pre>
+
+<p>pc就会被硬件设置到sepc处，然后从pc开始运行。</p>
+
+<p>接下来就完成一个init程序，这个程序只通过系统调用打印一个字符0。</p>
+
+<p>参考xv6,发现有一段initcode[]是纯机器指令，这段initcode源码在xv6/user下面，调用了一个syscall exec，运行了xv6的shell。</p>
+
+<pre><code class="language-bash=">#反汇编initcode.out得到initcode[]
+#小段存放
+riscv64-linux-gnu-objdump -d ./user/initcode.out
+</code></pre>
+
+<p>效仿xv6的做法：</p>
+
+<pre><code class="language-asm=">.globl start
+start:
+	li a7, 0x20
+	li a0, 0x30 
+	ecall
+
+loop:
+	j loop
+</code></pre>
+
+<p>这里的系统调用号是0x20可能不符合规范，但是测试一下整个流程应该可以不用在意。</p>
+
+<pre><code class="language-asm=">//U模式trap处理函数
+void user_trap()
+{
+	int syscall_num = proc_list[0].trapframe-&gt;a7;
+
+	if(r_scause() == 8)
+	{
+		//proc_list[0].trapframe-&gt;a0 = 8;
+		proc_list[0].trapframe-&gt;a0 = syscall[syscall_num]();
+	}
+	else
+	{
+		printf("user_trap(): unexpected scause %p \n", r_scause());
+		printf(fault_info[r_scause()-0x8000000000000000].fault_name);
+		panic("panic/n");
+	}
+
+	proc_list[0].trapframe-&gt;epc = r_sepc() + 4; 
+	user_trap_ret();
+}
+</code></pre>
+
+<p>运行后可见打印了一个0
+<img src="https://i.imgur.com/HeJ9s6n.png" alt="" /></p>
+
+<h3 id="linux中的0号进程和1号进程">linux中的0号进程和1号进程</h3>
+
+<p><strong>0号</strong>进程是管理进程调度的内核进程（即现在运行<strong>scheduler()</strong>的这个进程），<strong>1号</strong>进程是第一个用户进程，user_init()初始化的init进程。在linux中使用</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ps <span class="nt">-p</span> 1
+</code></pre></div></div>
+
+<p>查看1号进程的信息显示是systemd，systemd是新一代的init，内核进程会寻找init程序去执行，没找到就会启动shell。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">try_to_run_init_process</span><span class="p">(</span><span class="s">"/sbin/init"</span><span class="p">)</span> <span class="o">||</span>
+	    <span class="o">!</span><span class="n">try_to_run_init_process</span><span class="p">(</span><span class="s">"/etc/init"</span><span class="p">)</span> <span class="o">||</span>
+	    <span class="o">!</span><span class="n">try_to_run_init_process</span><span class="p">(</span><span class="s">"/bin/init"</span><span class="p">)</span> <span class="o">||</span>
+	    <span class="o">!</span><span class="n">try_to_run_init_process</span><span class="p">(</span><span class="s">"/bin/sh"</span><span class="p">))</span>
+		<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="n">panic</span><span class="p">(</span><span class="s">"No working init found.  Try passing init= option to kernel. "</span>
+	  <span class="s">"See Linux Documentation/admin-guide/init.rst for guidance."</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p><a href="http://213.254.12.151/~rubini/docs/init/">init</a></p>
+
+<h2 id="42-进程之间的切换-scheduling">4.2 进程之间的切换 scheduling</h2>
+
+<p>xv6当中进程之间的切换不是从一个进程切换到新的进程，而是从一个进程切换到内核再从内核切换到新的进程。</p>
+
+<p><img src="https://i.imgur.com/NhynPMJ.png" alt="" /></p>
+
+<p>xv6设置了定时器中断，当定时器中断到来时触发<strong>yield()</strong>，随后调用<strong>sched()</strong>，在<strong>sched()</strong>之中调用<strong>swtch()</strong>，<strong>swtch</strong>中的操作会使得cpu重新回到内核进程，而内核进程之前已经执行到：</p>
+
+<pre><code class="language-cpp=">void scheduler(void)
+{ 
+  struct proc *p; 
+  struct cpu *c = mycpu();
+  
+  c-&gt;proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+  
+    for(p = proc; p &lt; &amp;proc[NPROC]; p++) {
+      acquire(&amp;p-&gt;lock);
+      if(p-&gt;state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p-&gt;state = RUNNING;
+        c-&gt;proc = p;
+       swtch(&amp;c-&gt;context, &amp;p-&gt;context);
+
+        // Process is done running for now.
+      // It should have changed its p-&gt;state before coming back.
+        c-&gt;proc = 0;
+      }
+      release(&amp;p-&gt;lock);
+    }
+  }
+}
+</code></pre>
+
+<p><strong>scheduler()</strong> 使用最简单的轮询算法完成新进程的选择，利用<strong>swtch()</strong> 进入新的进程。</p>
+
+<p>第一个进程（打印0的那个进程）已经跑起来了，利用第一个进程把上述旧用户进程切换到内核scheduler进程，然后再切换到新内核进程的框架搭起来。相当于始终只调度一个用户进程：</p>
+
+<pre><code class="language-cpp=">//切换到内核进程
+void back_to_kernel()
+{
+	swtch(&amp;proc_ptr-&gt;context, &amp;kernel_ctxt.context);
+}
+
+//U模式trap处理函数
+void user_trap()
+{
+	int syscall_num = proc_ptr-&gt;trapframe-&gt;a7;
+	unsigned long trap_cause = r_scause();
+
+	if(trap_cause == 8)
+	{
+		proc_ptr-&gt;trapframe-&gt;a0 = syscall[syscall_num]();
+		proc_ptr-&gt;trapframe-&gt;epc = r_sepc() + 4; 
+	}
+	//S模式软件中断
+	else if(trap_cause == 0x8000000000000001)
+	{
+		printf("soft interrupt from s mode %p \n", trap_cause);
+		w_sip(r_sip() &amp; ~2);
+		back_to_kernel();
+		proc_ptr-&gt;trapframe-&gt;epc = r_sepc();
+	}
+	else
+	{
+		printf("user_trap(): unexpected scause %p \n", trap_cause);
+		printf(fault_info[r_scause()].fault_name);
+		panic("panic/n");
+	}
+
+	user_trap_ret();
+}
+</code></pre>
+
+<p>指针<strong>proc_ptr</strong>始终指向当前运行的用户进程，<strong>kernel_ctxt</strong>是存储内核进程上下文的变量</p>
+
+<pre><code class="language-cpp=">//内核进程一直在调度函数中循环
+void scheduler()
+{
+	struct proc *nxt_proc_ptr = proc_ptr;
+	struct proc *kernel_ptr = &amp;kernel_ctxt;
+
+	while(1)
+	{
+		proc_ptr = &amp;proc_list[0];
+		for(int n=0; n&lt;MAX_PROC; n++)
+		{
+			if(proc_ptr-&gt;state == RUNNABLE)
+			{
+				swtch(&amp;kernel_ptr-&gt;context, &amp;proc_ptr-&gt;context);
+			}
+
+			proc_ptr++;
+		}
+	}
+}
+</code></pre>
+
+<p><strong>scheduler()</strong> 遍历<strong>proc_list[MAX_PROC]</strong>，找到<strong>RUNNABLE</strong>的程序执行，目前我们只有<strong>initcode</strong>程序是<strong>RUNNABLE</strong>，存放在<strong>proc_list[0]</strong>。</p>
+
+<p>编译后运行反复打印：
+<img src="https://i.imgur.com/wl3cr8p.png" alt="" /></p>
+
+<h3 id="2-进程之间的切换的一些细节">2 进程之间的切换的一些细节</h3>
+
+<ul>
+  <li>
+    <p><strong>每个进程其实都有两个栈</strong>
+一个内核栈一个用户栈，进程并不是所有的内容都在用户空间完成的：比如<strong>用户空间执行时遇到一个切换进程目的的定时器中断</strong>，此时程序会陷入到内核中，但是这时候还并没有发生进程的切换，程序仍然是当前的程序，只是现在在内核空间执行。</p>
+  </li>
+  <li><strong>在user_trap_ret()一开始我们显式地关闭了中断</strong>
+    <pre><code class="language-c=">intr_off();
+</code></pre>
+    <p>但是在这之后没有调用以下指令显示地打开中断</p>
+    <pre><code class="language-c=">intr_on();
+</code></pre>
+    <p>没有开启吗？如果没有开启的话依赖于定时中断的任务切换函数没有办法进入。但是实际上，任务切换依旧可以进行。其实中断是被隐式的打开了：</p>
+    <pre><code class="language-c=">unsigned long x = r_sstatus();
+x &amp;= ~SSTATUS_SPP;
+//这里允许了中断！！！                                 
+x |= SSTATUS_SPIE;
+w_sstatus(x);
+</code></pre>
+  </li>
+  <li><strong>两个进程同时调用sys_print打印数字</strong></li>
+</ul>
+
+<p>父进程循环打印1，子进程循环打印2。如果两条指令之间不加延时，其中一个进程会一直打印，没有机会切换到schedule(),切换到另一个进程，但是在两条打印指令之间加入一段延时，又可以正常运行。为什么？</p>
+
+<p>操作系统中有两个trap入口地址<strong>kerneltrap</strong>和<strong>usertrap</strong>，我只在usertrap中判断定时器中断并进行任务切换但是在kerneltrap中只是置位软中断，不进行任务切换。当一个进程循环调用<strong>sys_print</strong>进行字符打印时，他会不断trap到kernel即S模式，S模式使用kerneltrap，这样以来除非刚刚好在用户模式时触发定时器中断，不然即使定时器时间到达都不会进行任务切换。</p>
+
+<p>解决：在<strong>kerneltrap</strong>中也加入任务切换。在<strong>kerneltrap</strong>中加入切换之后，发现最开始系统初始化的顺序也需要更改，pagetable的建立和映射必须要在<strong>trap_vector_install()</strong> 之前，不然在最开始就会pagefault，两个进程指针一个指向内核线程（<strong>kernel_ptr</strong>）一个指向当前运行进程(<strong>proc_ptr</strong>)。需要特别注意的是：在第一个用户进程起来之前也极有可能发生定时器中断，一定要初始化<strong>proc_ptr=kernel_ptr;</strong>，否则出现pagefault。至此，可以不加延时两个线程循环打印字符。</p>
+
+<h2 id="43-创建新进程-fork">4.3 创建新进程 fork()</h2>
+
+<p><strong>fork()</strong> 系统调用是接下来完成的函数，<strong>fork()</strong> 会将当前进程的全部内容复制一份，包括<strong>trapframe</strong>和代码</p>
+
+<p>具体会做一些什么事情呢?</p>
+
+<ol>
+  <li>查看进程数组，可分配的进程是有限的，是否还有可以分配的空位</li>
+  <li>分配<strong>pid</strong> 设置状态为<strong>USED</strong></li>
+  <li>分配<strong>pagetable</strong> <strong>trapframe</strong>的空间并映射</li>
+  <li>设置上下文如堆栈的位置</li>
+  <li>根据程序的长度来分配新的物理空间并用<strong>walk</strong>映射这些物理地址</li>
+  <li>设置状态为<strong>RUNNABLE</strong> 并返回<strong>PID</strong></li>
+</ol>
+
+<p>在看xv6源码时发现：</p>
+
+<pre><code class="language-cpp=">// copy saved user registers.
+*(np-&gt;trapframe) = *(p-&gt;trapframe);
+</code></pre>
+
+<p><del>在fork()函数当中并没有为child process复制parent process的trapfram仅仅把child process的trapframe指针指向了parent的trapframe。这样不就会把parent的trapframe内容给修改了吗？</del></p>
+
+<p>更改initcode代码如下：</p>
+
+<pre><code class="language-asm=">.globl start
+start:
+	li a7, 0x20 #系统调用号0x20 uart打印
+	li a0, 0x30 #0x30 ‘0’
+	ecall
+
+	li a7, 0x20
+	li a0, 0x31 #0x30 ‘1’
+	ecall
+
+	li a7, 0x01 #系统调用号0x01 fork()
+	ecall
+
+	li a7, 0x20
+	li a0, 0x32 #0x30 ‘2’
+	ecall
+
+	li a7, 0x20
+	li a0, 0x33 #0x30 ‘3’
+	ecall
+loop:
+	j loop
+</code></pre>
+
+<p>如果代码运行正确：先通过系统调用打印出<strong>01</strong>，接着程序使用<strong>fork()</strong> 产生子进程，随后两个进程都会从14行开始执行，打印出<strong>2323</strong>或者<strong>2233</strong>。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">fork</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">struct</span> <span class="n">proc</span> <span class="o">*</span><span class="n">new_proc_ptr</span><span class="p">;</span>
+    <span class="n">pte_t</span> <span class="o">*</span><span class="n">pte</span><span class="p">;</span>
+    <span class="kt">unsigned</span> <span class="kt">long</span> <span class="o">*</span><span class="n">proc_mem</span><span class="p">;</span>
+    <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">pa</span><span class="p">;</span>
+
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">n</span><span class="o">&lt;</span><span class="n">MAX_PROC</span><span class="p">;</span> <span class="n">n</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">proc_list</span><span class="p">[</span><span class="n">n</span><span class="p">].</span><span class="n">state</span> <span class="o">==</span> <span class="n">UNUSED</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">new_proc_ptr</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">proc_list</span><span class="p">[</span><span class="n">n</span><span class="p">];</span>
+            <span class="k">goto</span> <span class="n">found</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+
+    <span class="nl">found:</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">pid</span> <span class="o">=</span> <span class="o">++</span><span class="n">pid</span><span class="p">;</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">state</span> <span class="o">=</span> <span class="n">USED</span><span class="p">;</span>
+
+    <span class="c1">//分配pgt和trapframe的空间 并映射</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">proc_pagetable</span> <span class="o">=</span> <span class="n">proc_pagetable</span><span class="p">();</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">trapframe</span> <span class="o">=</span> <span class="n">kalloc</span><span class="p">();</span>
+    <span class="n">map_page</span><span class="p">(</span><span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">proc_pagetable</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">_trampoline</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">TRAMPOLINE</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">PTE_R</span> <span class="o">|</span> <span class="n">PTE_W</span> <span class="o">|</span> <span class="n">PTE_X</span><span class="p">);</span>
+    <span class="n">map_page</span><span class="p">(</span><span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">proc_pagetable</span><span class="p">,</span> <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">trapframe</span><span class="p">,</span> <span class="mh">0x3fffffe000</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">PTE_R</span><span class="o">|</span><span class="n">PTE_W</span><span class="p">);</span>
+
+    <span class="c1">//设置返回的地址 第一次</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">context</span><span class="p">.</span><span class="n">ra</span> <span class="o">=</span> <span class="n">fork_ret</span><span class="p">;</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">context</span><span class="p">.</span><span class="n">sp</span> <span class="o">=</span> <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">kstack</span><span class="p">;</span>
+
+    <span class="c1">//复制trapframe</span>
+        <span class="o">*</span><span class="p">(</span><span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">trapframe</span><span class="p">)</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">proc_ptr</span><span class="o">-&gt;</span><span class="n">trapframe</span><span class="p">);</span>
+
+    <span class="c1">//设置子进程返回0</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">trapframe</span><span class="o">-&gt;</span><span class="n">a0</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">prog_size</span> <span class="o">=</span> <span class="n">proc_ptr</span><span class="o">-&gt;</span><span class="n">prog_size</span><span class="p">;</span>
+
+    <span class="c1">//根据程序的长度复制并映射</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">n</span><span class="o">&lt;</span><span class="n">proc_ptr</span><span class="o">-&gt;</span><span class="n">prog_size</span><span class="p">;</span> <span class="n">n</span><span class="o">+=</span><span class="mi">4096</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">pte</span> <span class="o">=</span> <span class="n">walk</span><span class="p">(</span><span class="n">proc_ptr</span><span class="o">-&gt;</span><span class="n">proc_pagetable</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">pte</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">panic</span><span class="p">(</span><span class="s">"pte == 0</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="n">pa</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)(</span><span class="o">*</span><span class="n">pte</span><span class="p">)</span><span class="o">&gt;&gt;</span><span class="mi">10</span><span class="o">&lt;&lt;</span><span class="mi">12</span><span class="p">;</span>
+        <span class="n">proc_mem</span> <span class="o">=</span> <span class="n">kalloc</span><span class="p">();</span>
+        <span class="n">memmove</span><span class="p">(</span><span class="n">proc_mem</span><span class="p">,</span> <span class="n">pa</span><span class="p">,</span> <span class="mi">4096</span><span class="p">);</span>
+        <span class="n">map_page</span><span class="p">(</span><span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">proc_pagetable</span><span class="p">,</span> <span class="n">proc_mem</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">PTE_R</span><span class="o">|</span><span class="n">PTE_W</span><span class="o">|</span><span class="n">PTE_U</span><span class="o">|</span><span class="n">PTE_X</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="c1">//设置程序RUNNABLE</span>
+    <span class="n">new_proc_ptr</span><span class="o">-&gt;</span><span class="n">state</span> <span class="o">=</span> <span class="n">RUNNABLE</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">pid</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>这里部分内容有几个坑：
+<strong>1. undefined declaration of memcpy</strong></p>
+
+<pre><code class="language-cpp=">*(new_proc_ptr-&gt;trapframe) = *(proc_ptr-&gt;trapframe);
+</code></pre>
+
+<p>涉及到通过指针来复制结构体，尽管没有在代码中使用memcpy但是编译器会优化代码使用memcpy来完成复制，如果没有memcpy的声明就会出现undefined错误。</p>
+
+<p><strong>2. 一直fork()直到用光proc_list[MAX_PROC]数组</strong>
+<img src="https://i.imgur.com/melYd6o.png" alt="" />
+进入<strong>usertrap</strong>中断处理函数之后一定要先保存<strong>sepc</strong>寄存器的值，不然可能会被修改导致返回的地址不正确，出现多次fork()。</p>
+
+<pre><code class="language-c{linenos=true}">//U模式trap处理函数
+void user_trap()
+{
+	int syscall_num = proc_ptr-&gt;trapframe-&gt;a7;
+	unsigned long trap_cause = r_scause();
+
+	if(trap_cause == 8)
+	{
+		proc_ptr-&gt;trapframe-&gt;epc = r_sepc() + 4; 
+		//proc_list[0].trapframe-&gt;a0 = 8;
+		proc_ptr-&gt;trapframe-&gt;a0 = syscall[syscall_num]();
+//		proc_ptr-&gt;trapframe-&gt;epc = r_sepc() + 4; 
+	}
+	//S模式软件中断
+	else if(trap_cause == 0x8000000000000001)
+	{
+               proc_ptr-&gt;trapframe-&gt;epc = r_sepc();
+		//printf("soft interrupt from s mode %p \n", trap_cause);
+		w_sip(r_sip() &amp; ~2);
+		back_to_kernel();
+//		proc_ptr-&gt;trapframe-&gt;epc = r_sepc();
+	}
+	else
+	{
+		printf("user_trap(): unexpected scause %p \n", trap_cause);
+		printf(fault_info[r_scause()].fault_name);
+		panic("panic/n");
+	}
+
+	user_trap_ret();
+}
+</code></pre>
+
+<p><strong>3. pid不对</strong>
+pid是一个全局变量初始化成0，但是后来发现变成了一个地址。查看map文件，问题最后定位到pid所在的位置和空闲内存的位置重叠，而空闲内存的管理使用的是最简单的链表，pid的位置正好是空闲内存存指针的地方。原本以为所有初始化之后的全局变量都在data段中存储，查看map文件后发现还有sbss段，里面存放的第一个变量就是pid。修改ld文件考虑sbss段。</p>
+
+<p>什么时候在sbss段什么时候在data段，可能是要看编译器？</p>
+
+<p><strong>4. c编写的用户程序使用fork()函数</strong>
+判断父子进程时，直接使用fork()的返回值不会出问题，而赋值给局部变量之后再判断pid，子进程出现page fault。debug后发现只分配并映射了stack空间，但是并没有将父进程的stack内容复制给子进程。</p>
+
+<h2 id="44-进程睡眠-sleep">4.4 进程睡眠 sleep()</h2>
+
+<p>进程会sleep，将当前进程状态设置为SLEEPING然后调用sched(),让当前进程主动放弃cpu</p>
+
+<blockquote>
+  <p>The basic idea is to have sleep mark the current process as SLEEPING and then call sched to release the CPU;</p>
+</blockquote>
+
+<p>其实就是设置当前的进程是SLEEPING状态，SLEEPING状态的程序自然不能运行，所以我们切换到scheduler进程去重新选择一个进程执行。sched函数其实就是之前使用的backtokernel函数。</p>
+
+<pre><code class="language-cpp=">void sleep()
+{
+    proc_ptr-&gt;state = SLEEPING;
+    sched();
+}
+</code></pre>
+
+<h2 id="41-进程的并发和同步">4.1 进程的并发和同步</h2>
+
+<p>以多线程计数器为例：</p>
+
+<pre><code class="language-cpp=">unsigned int share_var;
+
+void *routine(void *arg)
+{
+    for(int i=0; i&lt;1000; i++)
+    {
+        share_var++;
+    }
+    return NULL;
+}
+
+int main()
+{
+    pthread_t thread[2];
+  
+    pthread_create(&amp;thread[0], NULL, routine, 0);
+    pthread_create(&amp;thread[1], NULL, routine, 0);
+  
+    pthread_join(&amp;thread[0], NULL);
+    pthread_join(&amp;thread[1], NULL);
+  
+    printf("%d", share_var);
+  
+    return 0;
+}
+</code></pre>
+
+<p>打印的结果大概率小于2000,在线程1没有将share_var+1的值写回到share_var时，可能线程2就被调度执行，此时线程2读取到的share_var仍然是0，加1后回写，share_var变成1,这时又轮到线程1执行，回写线程1的结果，最后share_var加了两次但是实际结果只加了一次，出现了数据更新的丢失。</p>
+
+<p>需要注意的是即使将这条share_ptr++换成一条汇编的指令执行，仍然不能保证这个自加操作的原子性。即使这个程序在单个单核单线程CPU运行也不能保证原子性，因为CPU现在都是流水线执行，<strong>取指 译码 执行 访存 回写</strong>这五个阶段都可能会被打断，除非是单个单线程CPU在一个时钟周期可以完成五个阶段才能保证自加操作的原子性。</p>
+
+<h2 id="42-spin-lock-自旋锁">4.2 spin lock (自旋锁)</h2>
+
+<blockquote>
+  <p>We cannot guarantee a thread execution order.</p>
+</blockquote>
+
+<p>就算有的线程新创建有的线程后创建，后创建的线程仍然有可能比先创建的线程先执行</p>
+
+<p>竞争的产生 有一个共享变量，进程A去操作他的动作还没完成，进程B也去操作这个变量</p>
+
+<p><strong>1. 关闭中断？</strong>
+进程的切换是通过定时器中断来完成的，在操作共享变量的时候关闭所有的中断可以避免进程的切换，这样就不会产生竞争
+但是user space的程序可以有关闭中断的权利危险</p>
+
+<p><strong>2. 使用一个lock变量？</strong>
+试想设置一个lock变量 如果lock=0 表示没进程在访问 反之则有其他进程正在访问 进程A在访问共享变量之前 先测试lock的值
+这样一来好像可以避免竞争 但是lock变量自己也是共享的 如果A进程得到lock=0 在把lock赋值1之前 CPU切换到进程B 进程B也访问了lock 由于A还来得及上锁 B也认为可以操作共享内存
+竞争再次发生</p>
+
+<p><strong>3. spin lock</strong></p>
+
+<p><strong>atomic operation</strong> (原子操作)
+不可被打断的一串命令</p>
+
+<p>TSL Test &amp; Set Lock</p>
+
+<pre><code class="language-asm=">#将LOCK的值存入RX 并且设置LOCK=1
+TSL RX,LOCK
+</code></pre>
+
+<h2 id="杂">杂</h2>
+
+<p>trampoline.S又映射到了进程空间，又映射了内核空间，通过他的userret我们从kernel的S模式返回到了进程的U模式，当我们在进程的U模式时，有异常（系统调用）或者中断，我们通过uservec进入到内核S模式</p>
+
+<h1 id="5-文件系统fs">5. 文件系统（FS）</h1>
+
+<h2 id="51-virtio-disk">5.1 virtio disk</h2>
+
+<p>运行在QEMU虚拟机上的xv6，其文件系统的读写是建立在virtio disk上面的，先完成virtio disk的驱动才能进行后面的操作。</p>
+
+<h3 id="511-修改makefile">5.1.1 修改Makefile</h3>
+
+<pre><code class="language-makefile=">#关闭legacy模式 legacy是之前的旧设备协议
+QEMU_OPTS = -global virtio-mmio.force-legacy=false
+#磁盘镜像还没好先不指定
+QEMU_OPTS += -drive file=/dev/null,if=none,format=raw,id=x0
+QEMU_OPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+</code></pre>
+
+<pre><code class="language-makefile=">#加入刚才得设置
+run:
+    qemu-system-riscv64 $(QEMU_FLAGS) $(QEMU_BIOS) $(QEMU_OPTS) -kernel benos.elf
+debug:
+    qemu-system-riscv64 $(QEMU_FLAGS) $(QEMU_BIOS) $(QEMU_OPTS) -kernel benos.elf -S -s
+</code></pre>
+
+<h3 id="512-生成测试img文件">5.1.2 生成测试img文件</h3>
+
+<p>上面的配置只能测试磁盘得初始化不能测试读写，因为没有磁盘镜像。用dd工具生成一个随机得磁盘镜像来测试读写</p>
+
+<pre><code class="language-bash=">#block size = 1024k
+dd if=/dev/urandom of=mydisk.img bs=1M count=10
+</code></pre>
+
+<h3 id="513-virtio驱动">5.1.3 virtio驱动</h3>
+
+<h4 id="1-使能plic管理的磁盘中断">1. 使能PLIC管理的磁盘中断</h4>
+
+<p>virtio disk的中断是由PLIC来控制的，PLIC由将这个中断传递给CPU，PLIC的中断信号对于CPU来说是外部中断，因此要使能S模式的外部中断。</p>
+
+<pre><code class="language-cpp=">w_sie(r_sie() | (0x01&lt;&lt;9));
+</code></pre>
+
+<h4 id="2-具体读写操作">2. 具体读写操作</h4>
+
+<p>virtio disk读写都要通过struct buf结构体来完成，buf结构体的dev成员设置0x01</p>
+
+<pre><code class="language-cpp=">struct buf {
+  int valid;   // has data been read from disk?
+  int disk;    // does disk "own" buf?
+  uint dev;
+  uint blockno;
+  //struct sleeplock lock;
+  uint refcnt;
+  struct buf *prev; // LRU cache list
+  struct buf *next;
+  uchar data[1024];
+};
+</code></pre>
+
+<p>测试virtio_disk_rw，向第0个block写1024个byte，内容都是0</p>
+
+<pre><code class="language-cpp=">struct buf *test_buf = (struct buf *)kalloc();
+
+memset(test_buf, 0, 4096);
+test_buf-&gt;dev = 0x1;
+test_buf-&gt;blockno = 0;
+test_buf-&gt;valid = 0;
+test_buf-&gt;refcnt = 1;
+
+virtio_disk_rw(test_buf, 1);
+</code></pre>
+
+<p>在内核当中直接测试的时候一定要主要这个<strong>test_buf</strong>分配空间别放在<strong>free_mem</strong>之前了，不然后面的设置就全都没用了。</p>
+
+<p>用<strong>hexdump</strong>查看写测试之前的磁盘内容，一行是16bytes，从0x0000开始：</p>
+
+<p><img src="https://i.imgur.com/WeIaEUv.png" alt="" /></p>
+
+<p>运行程序写一个block之后,第一个block已经成功变成0</p>
+
+<p><img src="https://i.imgur.com/zHz5zAD.png" alt="" /></p>
+
+<p>读写失败的情况：在gdb中可以查看test_buf具体的值，dev成员的值不对，block的值也不对，可能是由于test_buf有些成员没有设置正确，返回的data数组的值也是任意的。</p>
+
+<pre><code class="language-cpp=">(gdb) p /x *test_buf 
+$1 = {valid = 0x0, disk = 0x0, dev = 0x1000, blockno = 0x3, refcnt = 0x1, pre = 0x0, nxt = 0x0, data = {0x0 &lt;repeats 129 times&gt;, 0xf0,
+    0xff, 0xff, 0x2, 0x0 &lt;repeats 156 times&gt;, 0xd0, 0xff, 0xff, 0x2, 0x0 &lt;repeats 156 times&gt;, 0xb0, 0xff, 0xff, 0x2,
+    0x0 &lt;repeats 156 times&gt;, 0x90, 0xff, 0xff, 0x2, 0x0 &lt;repeats 156 times&gt;, 0x70, 0xff, 0xff, 0x2, 0x0 &lt;repeats 156 times&gt;, 0x50, 0xff,
+    0xff, 0x2, 0x0 &lt;repeats 91 times&gt;}}
+</code></pre>
+
+<h2 id="fatfile-allocation-table">FAT（File Allocation Table）</h2>
+
+<p>用链表把一个一个block链接起来，链表是集中存放并且有多个备份</p>
+
+<h2 id="52-基于inode的文件系统">5.2 基于Inode的文件系统</h2>
+
+<p>inode会在磁盘和RAM当中各一份，RAM当中我们直接写作inode，磁盘当中我们写作dinode作为区分。</p>
+
+<pre><code class="language-cpp=">#define NDIRECT 12
+#define NINDIRECT 1
+
+//总大小64bytes
+struct dinode
+{
+    //用major来指定是哪种设备 minor来指定是这种设备的哪一个
+    short major;
+    short minor;
+    //三种type：file device directory
+    short type;
+    short nlink;
+    unsigned int size;
+    //12个直接块 1个间接块
+    unsigned int block_addr[NDIRECT+NINDIRECT];  
+};
+</code></pre>
+
+<p>xv6当中定义NINDIRECT</p>
+
+<pre><code class="language-cpp=">#define NINDIRECT BSIZE/(sizeof(unsigned int))
+</code></pre>
+
+<p>虽然dinode只用了一个指针来指向<strong>indirect block</strong>，但是一个间接块当中其实含有<strong>Block_Size/sizeof(指针长度)</strong> 个指向block的指针。</p>
+
+<p><img src="https://i.imgur.com/DCh5WeF.png" alt="dinode 结构体" /></p>
+
+<p>inode是从dinode读取填入的。</p>
+
+<pre><code class="language-cpp=">struct inode
+{
+    unsigned int dev_num;
+    unsigned int inode_num;
+    int valid;
+    int ref;
+  
+    struct dinode inode_copy;  
+};
+</code></pre>
+
+<p><strong>Directory Entry 目录项</strong>
+如果没有目录，那么所有的文件都是平行的。目录是一种特殊的文件，一级目录就可以理解成一个文件夹。我们每创建一个文件就会分配一个inode，每创建一个文件夹也会分配inode，文件的数据块存放的是文件的内容，目录的数据块存放的是当前文件夹下面文件和子文件夹的dirtectory entry用struct dirent表示。所以每新添加一个文件需要朝他所在的文件夹的数据块添加他的dirent</p>
+
+<pre><code class="language-cpp=">//大小16bytes
+struct dirent {
+  ushort inum;
+  char name[DIRSIZ];
+};
+</code></pre>
+
+<h3 id="521-创建文件系统到磁盘主要api">5.2.1 创建文件系统到磁盘主要API</h3>
+
+<pre><code class="language-cpp=">//小端转换
+unsigned short xshort(unsigned short val);
+unsigned short xint(unsigned int val);
+
+//根据block号 读写缓冲buf内容来写
+wr_block(unsigned int n_block, void *buf);
+rd_block(unsigned int n_block, void *buf);
+
+//读写磁盘里面的inode
+wr_inode(unsigned int inum, struct dinode *new_dinode);
+rd_inode(unsigned int inum, struct dinode *new_dinode);
+
+//分配新的inode 并写入inode blk
+//注意！！！ inode结构体在使用之前一定要先将里面的东西全部清零
+inode_alloc(unsigned short file_type);
+
+//inode增加内容
+inode_append(unsigned int inum, void *buf, int n);
+</code></pre>
+
+<p>大小端转换如果本来就是小端了那么使用xint函数输入等于输出。xv6使用了这个转换应该主要是考虑到会用在大端的磁盘上面。</p>
+
+<p>实现一个最基本的文件系统结构，先不要log块</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">分区</th>
+      <th style="text-align: center">boot</th>
+      <th style="text-align: center">superblock</th>
+      <th style="text-align: center">inode block</th>
+      <th style="text-align: center">bitmap block</th>
+      <th style="text-align: center">data blocks</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center">块号</td>
+      <td style="text-align: center">0</td>
+      <td style="text-align: center">1</td>
+      <td style="text-align: center">2</td>
+      <td style="text-align: center">3</td>
+      <td style="text-align: center">4及之后</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">起始地址</td>
+      <td style="text-align: center">0x00</td>
+      <td style="text-align: center">0x400</td>
+      <td style="text-align: center">0x800</td>
+      <td style="text-align: center">0xc00</td>
+      <td style="text-align: center">0x1000</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>里面比较费劲的实现应该就是<strong>inode_append</strong></p>
+
+<pre><code class="language-c=">//往对应inode文件添加内容
+//*xinput对应待添加数据的首地址
+//n对应数据长度
+void inode_append(unsigned int inum, void *input, int len)
+{
+	char *p = (char *)input;
+	struct dinode dinode_buf;
+	unsigned int offset, fbn, actual_wr_len;
+	char indirect[BSIZE / sizeof(unsigned int)];
+	unsigned int blk_num;
+	char data_buf[BSIZE];
+
+	//读取inode到buf里面
+	rd_inode(inum, &amp;dinode_buf);
+
+	offset = xint(dinode_buf.size);
+
+	printf("offset = 0x%x\n", offset);
+	//循环条件 如果添加的内容还没有添加完
+	while(len &gt; 0)
+	{
+		printf("length = 0x%x\n", len);
+		//完整块的数量
+		fbn = offset / BSIZE;
+		printf("fbn = %u\n", len);
+
+		//如果这个文件数据块的数量小于直接块的数量
+		if(fbn &lt; NDIRECT)
+		{
+			//对应还没有分配的情况 或者刚刚好文件大小是BSIZE的整数倍
+			if(xint(dinode_buf.data_address[fbn] == 0))
+			{
+				dinode_buf.data_address[fbn] = xint(freeblock++);
+			}
+
+			blk_num = xint(dinode_buf.data_address[fbn]);
+		}
+		//如果超过了直接快
+		else
+		{
+			//看看间接块的地址有没有分配
+			if(xint(dinode_buf.data_address[NDIRECT]) == 0)
+			{
+				dinode_buf.data_address[NDIRECT] = freeblock++;
+			}
+			//读取间接块
+			rd_sec(dinode_buf.data_address[NDIRECT], (char *)indirect);
+			//查看有没有分配
+			if(indirect[fbn-NDIRECT] == 0)
+			{
+				indirect[fbn-NDIRECT] = freeblock++;
+                //分配之后将数据写回去
+				wr_sec(dinode_buf.data_address[NDIRECT], (char *)indirect);
+			}
+			blk_num = indirect[fbn-NDIRECT];
+		}
+
+		//读取这一块的内容到缓存
+		rd_sec(blk_num, data_buf);
+
+		//等待添加的内容可能比当前块剩余的空间少或者多
+		//我们只写入最少的
+		//如果直接按照剩余空间长度来写 可能会造成segment fault
+		actual_wr_len = min(n, (fbn+1)*BSIZE-offset);
+		printf("actual_wr_len = %d\n", actual_wr_len);
+		memcpy(data_buf+offset-(fbn*BSIZE), p, actual_wr_len);
+
+		//回写
+		wr_sec(blk_num, data_buf);
+
+		len -= actual_wr_len;
+		offset += actual_wr_len;
+		p += actual_wr_len;
+	}
+
+	dinode_buf.size = offset;
+	wr_inode(inum, &amp;dinode_buf);
+}
+</code></pre>
+
+<p>如图所示
+第0块 <strong>[0x3ff:0x00]</strong> 是boot 没有内容
+第1块 <strong>[0x7ff:0x400]</strong> 是sb 起始内容是设置的magic number
+第2块 <strong>[0xaff:0x800]</strong> 是inode块 每条inode长64byte对应四行的长度 从第12byte开始就是对应的direct block的块号
+第3块 <strong>[0xfff:0xc00]</strong> 是bitmap 没有填写
+第4块 <strong>[0x13ff:0x1000]</strong> 是数据块 创建rootdir时将这块分配给他作为datablock 用于存放rootdir文件夹下的子文件和子文件夹</p>
+
+<p>rootdir是第一个创建的文件类型是文件夹 分配的数据块号是4对应 <strong>[0x13ff:0x1000]</strong> 后来又添加了两个文件 这两个文件属于rootdir 因此会创建相应的directory entry到4号数据块</p>
+
+<p><img src="https://i.imgur.com/L88wFbv.png" alt="测试图" />
+<img src="https://i.imgur.com/oPT8bHO.png" alt="测试图" /></p>
+
+<h2 id="问题">问题</h2>
+
+<p>在使用read_sb读取superblock的内容时，最开始偷懒直接用函数当中的临时变量struct buf结构体来存储virtio返回的数据块，在初始化的时候没问题，但是放在fork_ret当中去执行总是读取的不对，data里面全部是空。换成heap上分配的内存来存储就没问题，栈空间不够？但是gdb查看时发现是够用的，暂时还不知道为什么。</p>
+
+<h2 id="53-exec系统调用">5.3 exec()系统调用</h2>
+
+<p>exec()和文件系统的实现密切相关，本来在fork()系统调用之后接着就实现exec()系统调用，但是在查看了xv6的源码之后发现没有文件系统还真写不出来。exec()的任务很简单：</p>
+
+<blockquote>
+  <p>exec is a system call that replaces a process’s user address space with data read from a file, called a binary or executable file.</p>
+</blockquote>
+
+<p>exec()执行新的程序，他的方式就是把当前进程的一切替换成将要执行的程序的内容。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center">elf文件组成</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><strong>elf header</strong></td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><strong>program header</strong></td>
+    </tr>
+    <tr>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.init</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.plt</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.text</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.rodata</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.data</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.bss</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.comment</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">.symtab</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><strong>section header</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<ol>
+  <li>通过path字符串找到这个文件的inode，inode包含了这个文件的所有信息</li>
+</ol>
+
+<pre><code class="language-c=">char *get_nxt_name(char *path, char *name);
+int get_inode(char *path, struct inode *ino);
+</code></pre>
+
+<ol>
+  <li>根据inode提供的信息解析elf header的内容</li>
+</ol>
+
+<pre><code class="language-c=">struct elfhdr {
+  uint magic;        //必须是0x7f+ELF
+  uchar elf[12];     //
+  ushort type;       //文件类型 
+                     //可重定位文件（Relocatable File）
+                     //可执行文件（Executable File）
+                     //共享目标文件（Shared Object File）等几种类型
+  ushort machine;    //架构 riscv对应243
+  uint version;  
+  uint64 entry;      //程序入口
+  uint64 phoff;      //Program Header Table 在文件中的偏移量
+  uint64 shoff;      //Section Header Table 在文件中的偏移量
+  uint flags;        //标志位，表示与文件相关的处理器标志
+  ushort ehsize;     //ELF Header大小 通常是 52 字节。
+  ushort phentsize;  //Program Header Table 中每个表项的大小。  
+  ushort phnum;      //Program Header Table 中表项的数量
+  ushort shentsize;  //Section Header Table 中每个表项的大小。  
+  ushort shnum;      //Section Header Table 中表项的数量
+  ushort shstrndx;   //包含节名称的字符串表在 Section Header Table 中的索引
+};
+
+//program header
+struct proghdr
+{
+    unsigned int type;
+    unsigned int flags;
+    unsigned long off;
+    unsigned long vaddr;
+    unsigned long paddr;
+    unsigned long filesz;
+    unsigned long memsz;
+    unsigned long align;
+};
+</code></pre>
+
+<p>使用<strong>readelf</strong>工具可以帮助我们分析写入的elf文件</p>
+
+<p>注意：program header可能会有多个！我们需要根据elf header的信息来写：
+最开始只使用汇编来编写用户代码的时候没有这些问题，但是在使用c之后，使用int main()的方式来编写用户程序，在生成elf文件时，会按照user.ld指定的方式来链接代码段和数据段</p>
+
+<p><img src="https://hackmd.io/_uploads/r15s2zfI3.png" alt="" /></p>
+
+<p><img src="https://hackmd.io/_uploads/ry2EnzzIn.png" alt="" /></p>
+
+<pre><code class="language-c=">//从磁盘加载程序到内存的api
+
+</code></pre>
+
+<ol>
+  <li>根据elf header分配pgt 填充程序各段的位置</li>
+</ol>
+
+<p>在完成elf文件程序装载时又发现：因为之前都是很短的程序所以我们分配的都是一个页就行了</p>
+
+<pre><code class="language-c=">int exec(char *path, char **argv)
+{
+    ...
+    //分配新的页表
+    pgt_t user_pagetable = proc_pagetable();
+  
+    //映射trampoline
+    //映射trapframe
+    //映射stack
+    map_page(user_pagetable, (unsigned long)_trampoline, (unsigned long)TRAMPOLINE, 1, PTE_R | PTE_X);
+    map_page(user_pagetable, (unsigned long)proc_ptr-&gt;trapframe, (unsigned long)TRAMPOLINE-0x1000, 1, PTE_R | PTE_W);
+    map_page(user_pagetable, (unsigned long)stack, (unsigned long)4096, 1, PTE_R | PTE_W);
+  
+    //读取elfhdr proghdr
+    //分配装载程序内容的物理地址并映射
+    //装载程序内容到刚才分配的物理地址
+    read_elfhr(&amp;proc_elfhdr, &amp;proc_proghdr, &amp;proc_inode);
+    uvmalloc(user_pagetable, 0, proc_proghdr.memsz, 0);
+    loadsec(user_pagetable, &amp;proc_inode, proc_proghdr.vaddr, proc_proghdr.off, proc_proghdr.filesz);
+  
+    //填写程序结构体
+    proc_ptr-&gt;proc_pagetable = user_pagetable;
+    proc_ptr-&gt;prog_size = 4096;
+    proc_ptr-&gt;trapframe-&gt;epc = proc_elfhdr.entry;
+    proc_ptr-&gt;trapframe-&gt;sp = 4096+4096;
+  
+    return 0;
+}
+</code></pre>
+
+<h3 id="测试exec系统调用">测试exec()系统调用</h3>
+
+<p>在第一个用户程序initcode当中调用exec</p>
+
+<h2 id="54-file-descriptor-layer">5.4 File Descriptor Layer</h2>
+
+<p>在完成inode层之后本想紧接着实现一系列和文件相关的系统调用如<strong>pipe()</strong>，却发现在inode之上都还有一层。先来看看在完成inode之后我们得到了什么？我们可以以文件路径的方式访问存储在img文件中的任何一个文件或者文件夹，但是这离把所有的资源都抽象成文件还不够。</p>
+
+<p>我们还需要一层<strong>File Descriptor Layer</strong>：</p>
+
+<p><img src="https://hackmd.io/_uploads/ryTx1cXV2.png" alt="" /></p>
+
+<p>xv6用<strong>struct file</strong>结构体实现了所有资源都是文件的统一,<strong>struct file</strong>就是对<strong>inode</strong>和<strong>pipe</strong>的一个新的封装</p>
+
+<pre><code class="language-c=">struct file {
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  int ref; // reference count
+  char readable;
+  char writable;
+  struct pipe *pipe; // FD_PIPE
+  struct inode *ip;  // FD_INODE and FD_DEVICE
+  uint off;          // FD_INODE I/O offset
+  short major;       // FD_DEVICE
+};
+</code></pre>
+
+<p>使用路径名并通过file descriptor的方式打开读写磁盘上的文件示意图如下：</p>
+
+<p><img src="https://i.imgur.com/VYMn1bW.png" alt="fs_all" /></p>
+
+<p>在图中可以清晰的知道通过<strong>open</strong>函数返回的<strong>fd</strong>就是进程控制块(PCB)中<strong>ofile</strong>数组中的元素号码，内核中通过<strong>ofile[fd]</strong>寻址到其对应的<strong>struct file</strong>，<strong>struct file</strong>中对应的不同的文件类型分别有不同的指针指向对应的结构体，例如如果这个struct file的类型是FD_FILE那么就设置</p>
+
+<h3 id="541-copy_from_user-copy_to_user">5.4.1 copy_from_user() copy_to_user()</h3>
+
+<h3 id="542-pipe">5.4.2 pipe()</h3>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">//用户程序使用pipe的声明</span>
+<span class="kt">int</span> <span class="nf">pipe</span><span class="p">(</span><span class="kt">int</span> <span class="n">pipefd</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+</code></pre></div></div>
+
+<p>pipe从他的结构体定义中可知就是一块RAM中的内存，有一些读写参数加一把锁(写完之前不能读，读完之前不能写)。新建一个pipe和新建一个文件不同的是pipe有读写两个端口，这两个端口要分别对应不同的fd，fd[2]就对应两个struct file，而一般的文件只需要一个是struct file</p>
+
+<p><img src="https://i.imgur.com/kBN0QAv.png" alt="pipe1" /></p>
+
+<p><img src="https://i.imgur.com/zuuHw0g.png" alt="Imgur" /></p>
+
+<p><img src="https://i.imgur.com/i2bbH9q.png" alt="Imgur" /></p>
+
+<p><a href="https://academy.cba.mit.edu/classes/networking_communications/SD/FAT.pdf">FAT</a></p>
+
+<p><a href="https://www.cs.williams.edu/~cs432/labs/07-files.pdf">07-files.pdf</a></p>
+
+<p><a href="https://toroid.org/unix-pipe-implementation">pipe implementation</a></p>
+
+<h1 id="6-开启多核">6. 开启多核</h1>
+
+<p>走到这里发现很多的系统调用和函数都涉及到锁，还是开启多核把最基本的并发同步实验做了吧。</p>
+
+<p>QEMU开启多核添加</p>
+
+<pre><code class="language-Makefile=">
+</code></pre>
+
+<h3 id="为printf加锁">为printf()加锁</h3>
+
+<pre><code class="language-c=">//xv6使用的是gcc编译器生成的命令
+void acquire(struct spinlock *lk) 
+{ 
+    while(__sync_lock_test_and_set(&amp;lk-&gt;locked, 1) != 0) 
+    { 
+        ; 
+    }   
+  
+    __sync_synchronize(); 
+}
+</code></pre>
+
+<p>反汇编之后可以看到：</p>
+
+<pre><code class="language-asm=">0000000080201fa4 &lt;acquire&gt;:
+    80201fa4:   fe010113            addi    sp,sp,-32     80201fa8:   00813c23            sd  s0,24(sp)
+    80201fac:   02010413            addi    s0,sp,32
+    80201fb0:   fea43423            sd  a0,-24(s0)
+    80201fb4:   00000013            nop
+    80201fb8:   fe843783            ld  a5,-24(s0)
+    80201fbc:   00100713            li  a4,1
+    80201fc0:   0ce7a72f            amoswap.w.aq    a4,a4,(a5)
+    80201fc4:   0007079b            sext.w  a5,a4
+    80201fc8:   fe0798e3            bnez    a5,80201fb8 &lt;acquire+0x14&gt;
+    80201fcc:   0ff0000f            fence
+    80201fd0:   00000013            nop
+    80201fd4:   01813403            ld  s0,24(sp)
+    80201fd8:   02010113            addi    sp,sp,32
+    80201fdc:   00008067            ret
+</code></pre>
+
+<p>栈帧基本上是16byte的倍数 前2个byte是ra和s0(fp),后面放参数</p>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />[] semaphore信号量</li>
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />sleep wakeup实现等待队列</li>
+</ul>
+
+<h2 id="sleep-wakeup同步机制">sleep() wakeup()同步机制</h2>
+
+<pre><code class="language-c=">void sleep(unsigned long *chan)
+{
+    proc_ptr-&gt;state = SLEEPING;
+    proc_ptr-&gt;sleep_chan = (unsigned long)chan;
+    sched();
+}
+
+void wakeup(unsigned long *chan)
+{
+    for(int n=0; n&lt;MAX_PROC; n++)
+   {
+        if((proc_list[n].state == SLEEPING) &amp;&amp; (proc_list[n].sleep_chan == (unsigned long)chan))
+        {
+           proc_list[n].state = RUNNABLE;
+        }
+    }
+}          
+
+int sys_sleep()
+{
+    int interval = proc_ptr-&gt;trapframe-&gt;a0;
+    unsigned long tick_st = systicks;
+    while(systicks-tick_st &lt; interval)
+    {
+        sleep(&amp;systicks);                                          
+    }   
+}       
+</code></pre>
+
+<p>注意：sleep()时需要将原本持有的锁释放 否则造成死锁</p>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />todo</li>
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />对比linux</li>
+</ul>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+</code></pre></div></div>
+
+<p>uboot启动传参数</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/*
+ *r2 DTB表的位置
+ */</span>
+<span class="n">kernel_entry</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">machid</span><span class="p">,</span> <span class="n">r2</span><span class="p">);</span> 
+</code></pre></div></div>
+
+<p>uboot为什么从0x20000开始：DOS时代使用1M一下的内存</p>
+
+<p>uboot跳到head.S</p>
+
+<h1 id="7-内存管理">7. 内存管理</h1>
+
+<h2 id="1-操作系统为什么需要能够连续的物理页">1. 操作系统为什么需要能够连续的物理页？</h2>
+
+<p>有了虚拟空间之后似乎好像不再依赖连续的地址空间了，但是从linux使用的buddy allocator来看，操作系统仍然需要经常分配连续的物理地址。</p>
+<ol>
+  <li>某些硬件设备（如DMA控制器）可能要求连续的物理页来进行数据传输。磁盘大文件传输。</li>
+  <li>尽管虚拟内存可以将物理内存映射到不连续的虚拟地址空间，但在某些情况下，连续的物理页可以带来性能上的优势。例如，连续的物理页可以提高缓存的命中率，减少内存访问的延迟。</li>
+</ol>
+
+<p>之前实现的物理内存分配中只有一个单位–<strong>页</strong>，但是很明显我们还需要一种小内存的分配管理办法，不然这个内存分配的内部碎片就太大了，哪怕我们只需要malloc(1)也会分配4K的空间。</p>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />完善内存管理</li>
+</ul>
+
+<h1 id="参考">参考</h1>
+
+<p><a href="https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c">virt board</a></p>
+
+<p><a href="https://github.com/mit-pdos/xv6-riscv">xv6_riscv</a></p>
+
+<p><a href="https://github.com/runninglinuxkernel/riscv_programming_practice">RV体系结构编程与实践</a></p>
+
+<p><a href="https://github.com/plctlab/riscv-operating-system-mooc">riscv-operating-system-mooc</a></p>
+
+<p><a href="https://ipads.se.sjtu.edu.cn/ospi/">操作系统：原理与实现</a></p>
+
+<p><a href="https://libgen.is/book/index.php?md5=F6FE9D77E7CC5647FE35B0446F34B5AC">Operating Systems Design and Implementation</a></p>
+
+<p><a href="https://www.youtube.com/playlist?list=PLbtzT1TYeoMhTPzyTZboW_j7TPAnjv9XB">hhp3</a></p>
+
+<p><a href="http://web.cs.ucla.edu/classes/winter12/cs111/scribe/15e/#:~:text=Having%20a%20separate%20page%20table,will%20work%20for%20every%20process.">Virtual Memory</a></p>
+
+<p><a href="https://jyywiki.cn/OS/2022/">南大操作系统课</a></p>
+
+<p><a href="https://www.youtube.com/playlist?list=PL2Yggtk_pK6-R9ehjj0AoTnWrNOLChuld">CS134</a></p>
+
+<p><a href="https://notnik.cc/posts/async/">coroutine</a></p>
+
+<p><a href="https://brennan.io/2020/03/22/sos-block-device/">virtio driver</a></p>
+
+<p><a href="https://users.cs.cf.ac.uk/dave/C/">C</a></p>
+
+<p><a href="https://courses.cs.washington.edu/courses/csep551/19au/projects/">更多的系统编程的idea</a></p>

@@ -88,6 +88,50 @@ ING baidu.com (110.242.68.66) 56(84) bytes of data.
 64 bytes from baidu.com (110.242.68.66): icmp_seq=3 ttl=49 time=101 ms
 ```
 
+[rockpi 5B gpio pinout]: https://wiki.radxa.com/Rock5/hardware/5b/gpio
+
+### tftp启动内核
+
+```shell
+setenv ipaddr 10.42.0.218
+setenv netmask 255.255.255.0
+setenv gatewayip 10.42.0.1
+setenv serverip 10.42.0.1
+setenv bootargs root=/dev/nfs rw nfsroot=${serverip}:/home/songyj/embedded/nfs,v3,tcp ip=${ipaddr}::${serverip}:255.255.255.0::eth0:off console=ttyS0,1500000n8
+pci enum
+tftpboot ${kernel_addr_r} Image
+tftpboot ${fdt_addr_r} rk3588-rock-5b.dtb
+booti ${kernel_addr_r} - ${fdt_addr_r}
+```
+
+[collabora uboot]: https://gitlab.collabora.com/hardware-enablement/rockchip-3588/notes-for-rockchip-3588/-/blob/main/upstream_uboot.md
+
+### 如何编译驱动？
+
+在PC上编译驱动需要内核源码以及交叉编译工具链，驱动文件可以在内核外随便找地方存放，编译之前需要先设置环境变量：
+
+```bash
+export ARCH=arm64
+export CROSS_COMPILE=aarch64-linux-gnu-
+```
+
+在Makefile中指定内核路径。make -C表示到KDIR这个路径执行make，随后將生成的.ko复制到板上。
+
+```makefile
+KDIR ?= /home/songyj/embedded/rk5b/kernel
+PWD := $(shell pwd)
+
+obj-m += gpio.o
+
+all:
+        make -C ${KDIR} M=$(PWD) modules
+
+clean:
+        make -C ${KDIR} M=$(PWD) clean
+```
+
+
+
 ## 0x01 Device Tree
 
 ### DT basics
@@ -216,3 +260,4 @@ label l0r
         append root=UUID=cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw console=ttyS2,1500000 console=tty1 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory splash plymouth.ignore-serial-consoles single
 ```
 
+**dtbo有时候很难给原设备树节点覆盖上**

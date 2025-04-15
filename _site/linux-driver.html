@@ -84,6 +84,41 @@ ING baidu.com <span class="o">(</span>110.242.68.66<span class="o">)</span> 56<s
 64 bytes from baidu.com <span class="o">(</span>110.242.68.66<span class="o">)</span>: <span class="nv">icmp_seq</span><span class="o">=</span>3 <span class="nv">ttl</span><span class="o">=</span>49 <span class="nb">time</span><span class="o">=</span>101 ms
 </code></pre></div></div>
 
+<h3 id="tftp启动内核">tftp启动内核</h3>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>setenv ipaddr 10.42.0.218
+setenv netmask 255.255.255.0
+setenv gatewayip 10.42.0.1
+setenv serverip 10.42.0.1
+setenv bootargs <span class="nv">root</span><span class="o">=</span>/dev/nfs rw <span class="nv">nfsroot</span><span class="o">=</span><span class="k">${</span><span class="nv">serverip</span><span class="k">}</span>:/home/songyj/embedded/nfs,v3,tcp <span class="nv">ip</span><span class="o">=</span><span class="k">${</span><span class="nv">ipaddr</span><span class="k">}</span>::<span class="k">${</span><span class="nv">serverip</span><span class="k">}</span>:255.255.255.0::eth0:off <span class="nv">console</span><span class="o">=</span>ttyS0,1500000n8
+pci enum
+tftpboot <span class="k">${</span><span class="nv">kernel_addr_r</span><span class="k">}</span> Image
+tftpboot <span class="k">${</span><span class="nv">fdt_addr_r</span><span class="k">}</span> rk3588-rock-5b.dtb
+booti <span class="k">${</span><span class="nv">kernel_addr_r</span><span class="k">}</span> - <span class="k">${</span><span class="nv">fdt_addr_r</span><span class="k">}</span>
+</code></pre></div></div>
+
+<h3 id="如何编译驱动">如何编译驱动？</h3>
+
+<p>在PC上编译驱动需要内核源码以及交叉编译工具链，驱动文件可以在内核外随便找地方存放，编译之前需要先设置环境变量：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">export </span><span class="nv">ARCH</span><span class="o">=</span>arm64
+<span class="nb">export </span><span class="nv">CROSS_COMPILE</span><span class="o">=</span>aarch64-linux-gnu-
+</code></pre></div></div>
+
+<p>在Makefile中指定内核路径。make -C表示到KDIR这个路径执行make，随后將生成的.ko复制到板上。</p>
+
+<div class="language-makefile highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">KDIR</span> <span class="o">?=</span> /home/songyj/embedded/rk5b/kernel
+<span class="nv">PWD</span> <span class="o">:=</span> <span class="nf">$(</span><span class="nb">shell</span> <span class="nb">pwd</span><span class="nf">)</span>
+
+<span class="nv">obj-m</span> <span class="o">+=</span> gpio.o
+
+<span class="nl">all</span><span class="o">:</span>
+        <span class="err">make</span> <span class="err">-C</span> <span class="err">${KDIR}</span> <span class="nv">M</span><span class="o">=</span><span class="nv">$(PWD)</span> modules
+
+<span class="nl">clean</span><span class="o">:</span>
+        <span class="err">make</span> <span class="err">-C</span> <span class="err">${KDIR}</span> <span class="nv">M</span><span class="o">=</span><span class="nv">$(PWD)</span> clean
+</code></pre></div></div>
+
 <h2 id="0x01-device-tree">0x01 Device Tree</h2>
 
 <h3 id="dt-basics">DT basics</h3>
@@ -211,3 +246,4 @@ label l0r
         append <span class="nv">root</span><span class="o">=</span><span class="nv">UUID</span><span class="o">=</span>cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw <span class="nv">console</span><span class="o">=</span>ttyS2,1500000 <span class="nv">console</span><span class="o">=</span>tty1 <span class="nv">cgroup_enable</span><span class="o">=</span>cpuset <span class="nv">cgroup_memory</span><span class="o">=</span>1 <span class="nv">cgroup_enable</span><span class="o">=</span>memory splash plymouth.ignore-serial-consoles single
 </code></pre></div></div>
 
+<p><strong>dtbo有时候很难给原设备树节点覆盖上</strong></p>
