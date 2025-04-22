@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-22T22:31:15+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-22T22:40:23+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
 </subtitle><author><name>Songyj</name></author><entry><title type="html">Rpi_4b</title><link href="https://songyj123.github.io/rpi-4b.html" rel="alternate" type="text/html" title="Rpi_4b" /><published>2025-04-19T00:00:00+08:00</published><updated>2025-04-19T00:00:00+08:00</updated><id>https://songyj123.github.io/RPI_4B</id><content type="html" xml:base="https://songyj123.github.io/rpi-4b.html"><![CDATA[<h1 id="rpi-4b">RPI 4B</h1>
 
 <h2 id="0x00-boot-config">0x00 Boot config</h2>
@@ -3617,7 +3617,7 @@ uservec保存了所有</p>
 
 <h2 id="35-页表创建流程">3.5 页表创建流程</h2>
 
-<p><img src="/home/songyj/pics/pagetable_alloc.png" alt="" /></p>
+<p><img src="/image/页表分配.png" alt="" /></p>
 
 <ol>
   <li>分配4K空间，用于存放pagetable
@@ -4760,7 +4760,7 @@ struct proghdr
 
 <p>使用路径名并通过file descriptor的方式打开读写磁盘上的文件示意图如下：</p>
 
-<p><img src="https://i.imgur.com/VYMn1bW.png" alt="fs_all" /></p>
+<p><img src="/image/文件系统框架.png" alt="fs_all" /></p>
 
 <p>在图中可以清晰的知道通过<strong>open</strong>函数返回的<strong>fd</strong>就是进程控制块(PCB)中<strong>ofile</strong>数组中的元素号码，内核中通过<strong>ofile[fd]</strong>寻址到其对应的<strong>struct file</strong>，<strong>struct file</strong>中对应的不同的文件类型分别有不同的指针指向对应的结构体，例如如果这个struct file的类型是FD_FILE那么就设置</p>
 
