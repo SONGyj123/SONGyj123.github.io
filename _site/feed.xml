@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-22T22:25:36+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-22T22:31:15+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
 </subtitle><author><name>Songyj</name></author><entry><title type="html">Rpi_4b</title><link href="https://songyj123.github.io/rpi-4b.html" rel="alternate" type="text/html" title="Rpi_4b" /><published>2025-04-19T00:00:00+08:00</published><updated>2025-04-19T00:00:00+08:00</updated><id>https://songyj123.github.io/RPI_4B</id><content type="html" xml:base="https://songyj123.github.io/rpi-4b.html"><![CDATA[<h1 id="rpi-4b">RPI 4B</h1>
 
 <h2 id="0x00-boot-config">0x00 Boot config</h2>
@@ -3457,7 +3457,7 @@ sudo udevadm control --reload-rules
 
 <h4 id="232-user模式下系统调用流程示意图">2.3.2 USER模式下系统调用流程示意图</h4>
 
-<p><img src="https://i.imgur.com/CDQdXyl.png" alt="" /></p>
+<p><img src="/image/xv6_syscall.vpd.png" alt="" /></p>
 
 <h4 id="233-系统调用中传递参数">2.3.3 系统调用中传递参数</h4>
 
@@ -3536,7 +3536,7 @@ uservec保存了所有</p>
 
 <p>软件中断还有问题？scheduler如何切换回去 scheduler如何到usertrap</p>
 
-<p><img src="https://i.imgur.com/ITmIldM.png" alt="xv6 roadmap" /></p>
+<p><img src="/image/xv6_roadmap.png" alt="xv6 roadmap" /></p>
 
 <h3 id="27-sleep和wakeup">2.7 sleep()和wakeup()</h3>
 
