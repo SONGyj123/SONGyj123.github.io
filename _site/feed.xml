@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-04-22T22:56:39+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="https://songyj123.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://songyj123.github.io/" rel="alternate" type="text/html" /><updated>2025-05-07T21:45:20+08:00</updated><id>https://songyj123.github.io/feed.xml</id><title type="html">SONGyj123</title><subtitle>description
 </subtitle><author><name>Songyj</name></author><entry><title type="html">Rpi_4b</title><link href="https://songyj123.github.io/rpi-4b.html" rel="alternate" type="text/html" title="Rpi_4b" /><published>2025-04-19T00:00:00+08:00</published><updated>2025-04-19T00:00:00+08:00</updated><id>https://songyj123.github.io/RPI_4B</id><content type="html" xml:base="https://songyj123.github.io/rpi-4b.html"><![CDATA[<h1 id="rpi-4b">RPI 4B</h1>
 
 <h2 id="0x00-boot-config">0x00 Boot config</h2>
@@ -396,7 +396,46 @@ label l0r
         append <span class="nv">root</span><span class="o">=</span><span class="nv">UUID</span><span class="o">=</span>cbf6ee10-c4b9-49e9-b246-f17a818913e1 rootwait rw <span class="nv">console</span><span class="o">=</span>ttyS2,1500000 <span class="nv">console</span><span class="o">=</span>tty1 <span class="nv">cgroup_enable</span><span class="o">=</span>cpuset <span class="nv">cgroup_memory</span><span class="o">=</span>1 <span class="nv">cgroup_enable</span><span class="o">=</span>memory splash plymouth.ignore-serial-consoles single
 </code></pre></div></div>
 
-<p><strong>dtbo有时候很难给原设备树节点覆盖上</strong></p>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Linux Driver]]></summary></entry><entry><title type="html">Cortex_m_note</title><link href="https://songyj123.github.io/cortex-m-note.html" rel="alternate" type="text/html" title="Cortex_m_note" /><published>2025-03-31T00:00:00+08:00</published><updated>2025-03-31T00:00:00+08:00</updated><id>https://songyj123.github.io/Cortex_M_note</id><content type="html" xml:base="https://songyj123.github.io/cortex-m-note.html"><![CDATA[<h1 id="cortex-m系列笔记">Cortex M系列笔记</h1>
+<p><strong>dtbo有时候很难给原设备树节点覆盖上</strong></p>
+
+<h2 id="0x02-linux设备驱动模型">0x02 Linux设备驱动模型</h2>
+
+<p>驱动通过module_init()和module_exit()在device和device driver匹配时被调用，驱动需要申请device和</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">module_init</span><span class="p">(</span><span class="n">drv_init_fn</span><span class="p">);</span>
+<span class="n">module_exit</span><span class="p">(</span><span class="n">drv_exit_fn</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>但是很多时候我们看到的是类似下面的方式，难免感到疑惑</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">module_i2c_driver</span><span class="p">(</span><span class="n">i2c_driver</span><span class="p">);</span>
+<span class="n">module_pci_driver</span><span class="p">(</span><span class="n">pci_driver</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>翻看这几个宏定义可知，依然是init和exit的方式，只是helper宏定义帮忙向bus注册了driver</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// module_i2c_driver</span>
+<span class="cp">#define module_i2c_driver(__i2c_driver) \
+	module_driver(__i2c_driver, i2c_add_driver, \
+			i2c_del_driver)
+</span>
+<span class="c1">// module_pci_driver</span>
+<span class="cp">#define module_pci_driver(__pci_driver) \
+	module_driver(__pci_driver, pci_register_driver, pci_unregister_driver)
+</span>
+<span class="c1">// module_driver宏定义</span>
+<span class="cp">#define module_driver(__driver, __register, __unregister, ...) \
+static int __init __driver##_init(void) \
+{ \
+	return __register(&amp;(__driver) , ##__VA_ARGS__); \
+} \
+module_init(__driver##_init); \
+static void __exit __driver##_exit(void) \
+{ \
+	__unregister(&amp;(__driver) , ##__VA_ARGS__); \
+} \
+module_exit(__driver##_exit);
+</span></code></pre></div></div>]]></content><author><name>Songyj</name></author><summary type="html"><![CDATA[Linux Driver]]></summary></entry><entry><title type="html">Cortex_m_note</title><link href="https://songyj123.github.io/cortex-m-note.html" rel="alternate" type="text/html" title="Cortex_m_note" /><published>2025-03-31T00:00:00+08:00</published><updated>2025-03-31T00:00:00+08:00</updated><id>https://songyj123.github.io/Cortex_M_note</id><content type="html" xml:base="https://songyj123.github.io/cortex-m-note.html"><![CDATA[<h1 id="cortex-m系列笔记">Cortex M系列笔记</h1>
 
 <h2 id="1-architecture">1. Architecture</h2>
 

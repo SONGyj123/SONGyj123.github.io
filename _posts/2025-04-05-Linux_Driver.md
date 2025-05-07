@@ -261,3 +261,46 @@ label l0r
 ```
 
 **dtbo有时候很难给原设备树节点覆盖上**
+
+## 0x02 Linux设备驱动模型
+
+驱动通过module_init()和module_exit()在device和device driver匹配时被调用，驱动需要申请device和
+
+```c
+module_init(drv_init_fn);
+module_exit(drv_exit_fn);
+```
+
+但是很多时候我们看到的是类似下面的方式，难免感到疑惑
+
+```c
+module_i2c_driver(i2c_driver);
+module_pci_driver(pci_driver);
+```
+
+翻看这几个宏定义可知，依然是init和exit的方式，只是helper宏定义帮忙向bus注册了driver
+
+```c
+// module_i2c_driver
+#define module_i2c_driver(__i2c_driver) \
+	module_driver(__i2c_driver, i2c_add_driver, \
+			i2c_del_driver)
+
+// module_pci_driver
+#define module_pci_driver(__pci_driver) \
+	module_driver(__pci_driver, pci_register_driver, pci_unregister_driver)
+
+// module_driver宏定义
+#define module_driver(__driver, __register, __unregister, ...) \
+static int __init __driver##_init(void) \
+{ \
+	return __register(&(__driver) , ##__VA_ARGS__); \
+} \
+module_init(__driver##_init); \
+static void __exit __driver##_exit(void) \
+{ \
+	__unregister(&(__driver) , ##__VA_ARGS__); \
+} \
+module_exit(__driver##_exit);
+```
+
