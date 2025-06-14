@@ -284,7 +284,142 @@ int main(int argc, char **argv)
 
 ***为什么將节点换成/dev/dri/renderD128之后segfault？***
 
+#### DRM器件
 
+在深入DRM框架之前，需要先看一下libdrm中如何用代码描述pipeline中的drm器件。
+
+在使用之前我们需要获取到当前这些drm器件的信息，通过drmModeResPtr:
+
+```c
+drmModeRes *resources = drmModeGetResources("/dev/dri/car0");
+```
+
+##### **drmModeRes**
+
+drmModeResPtr指向的结构体中包含多个drm器件，表示当前pipeline中存在的各种资源
+
+```
+typedef struct _drmModeRes {
+	int count_fbs;
+	uint32_t *fbs;
+	
+	int count_crtcs;
+	uint32_t *crtcs;
+	
+	int count_connectors;
+	uint32_t *connectors;
+	
+	int count_encoders;
+	uint32_t *encoders;
+	
+	uint32_t min_width, max_width;
+	uint32_t min_height, max_height;
+} drmModeRes, *drmModeResPtr;
+```
+
+##### **drmModeConnector**
+
+connector是最先被用的部件，mode用于描述屏幕的分辨率和刷新率等，mode数组按照显示最优到最差排列，还包含一些properties。
+
+```c
+typedef struct _drmModeConnector {
+	uint32_t connector_id;
+	uint32_t encoder_id;		// 当前连接的encoder id
+	uint32_t connector_type;	// DRM_MODE_CONNECTOR_VGA || DRM_MODE_CONNECTOR_HDMIA
+	uint32_t connector_type_id;
+	drmModeConnection connection;
+	uint32_t mmWidth, mmHeight; /**< HxW in millimeters */
+	drmModeSubPixel subpixel;
+
+	int count_modes;
+	drmModeModeInfoPtr modes; // mode用于描述屏幕的分辨率刷新率等信息
+
+	int count_props;
+	uint32_t *props; /**< List of property ids */
+	uint64_t *prop_values; /**< List of property values */
+
+	int count_encoders;
+	uint32_t *encoders; /**< List of encoder ids */
+} drmModeConnector, *drmModeConnectorPtr;
+
+typedef struct _drmModeModeInfo {
+	uint32_t clock;
+	uint16_t hdisplay, hsync_start, hsync_end, htotal, hskew;
+	uint16_t vdisplay, vsync_start, vsync_end, vtotal, vscan;
+
+	uint32_t vrefresh;
+
+	uint32_t flags;
+	uint32_t type;
+	char name[DRM_DISPLAY_MODE_LEN];
+} drmModeModeInfo, *drmModeModeInfoPtr;
+```
+
+##### **drmModeFB**
+
+```
+typedef struct _drmModeFB {
+	uint32_t fb_id;
+	uint32_t width, height;	// framebuffer的大小
+	uint32_t pitch;
+	uint32_t bpp;
+	uint32_t depth;
+
+	uint32_t handle;		// buffer handle用于传入内核查找到实际的内存
+} drmModeFB, *drmModeFBPtr;
+```
+
+##### **drmModeCrtc**
+
+crtc用于扫描framebuffer，虽然framebuffer与buffer handle结合在一起已经知道想要显示的内容，但是需要crtc控制实际显示区域的大小与位置，不一定整个fb都会显示在屏幕上。
+
+![img](https://i-blog.csdnimg.cn/blog_migrate/c1f6c3fdeef9d3571a45e46580c7379b.png)
+
+```
+typedef struct _drmModeCrtc {
+	uint32_t crtc_id;
+	uint32_t buffer_id;		// fb id
+
+	uint32_t x, y;			// 位置（x，y）
+	uint32_t width, height;	// 扫描大小
+	int mode_valid;
+	drmModeModeInfo mode;
+
+	int gamma_size; /**< Number of gamma stops */
+
+} drmModeCrtc, *drmModeCrtcPtr;
+```
+
+##### **drmModeEncoder**
+
+根据显示pipeline，前面我们已经有了显示的内容（framebuffer）和位置大小（crtc）以及显示器支持的协议（connector），似乎还缺少将framebuffer中的像素按照相应协议封装的部件。encoder的工作就是通过协议封装像素
+
+这里面需要特别说明的是**uint32_t possible_crtcs**，这是一个掩码。最开始获取pipeline资源的时候得到的**drmModeRes**包含一个crtc列表，如果bit0被置位1，则表示drmModeRes->crtc[0]与当前的encoder是匹配的。 
+
+```
+typedef struct _drmModeEncoder {
+	uint32_t encoder_id;
+	uint32_t encoder_type;
+	uint32_t crtc_id;
+	uint32_t possible_crtcs;
+	uint32_t possible_clones;
+} drmModeEncoder, *drmModeEncoderPtr;
+```
+
+- [ ] 如何知道匹配
+
+
+
+#### 用户空间配置显示pipeline的步骤
+
+![](/home/songyj/note/SONGyj123.github.io/image/display_pipeline.svg)
+
+1. **drmModeGetResources获取pipeline资源**
+2. **drmModeGetConnector获取connector**
+3. **drmModeGetEncoder获取encoder** connector中有encoder列表
+4. **选取可用的crtc** 逐位检查crtc掩码，寻找可用crtc
+5. **申请内存用于创建显示buffer**
+6. **创建framebuffer并绑定上一步申请的buffer**
 
 #### legacy接口
 
@@ -292,7 +427,7 @@ int main(int argc, char **argv)
 - **drmModePageFlip** （只会在vsync的时候进行切换framebuffer，避免画面撕裂）
 - **drmModeSetPlane**（只显示framebuffer的部分，之前都是全部显示）使用前需要先调用drmModeSetCrtc打通链路
 
-![img](https://i-blog.csdnimg.cn/blog_migrate/c1f6c3fdeef9d3571a45e46580c7379b.png)
+
 
 #### atomic接口
 
@@ -357,7 +492,7 @@ drm_atomic_helper_check_modset
 
 
 
-KMS
+### KMS
 
 DRM driver必须调用[`drm_mode_config_init`](https://www.kernel.org/doc/html/v4.11/gpu/drm-kms.html#c.drm_mode_config_init)
 
@@ -372,81 +507,180 @@ DRM driver必须调用[`drm_mode_config_init`](https://www.kernel.org/doc/html/v
 
 
 
-#### 综合实现分析（exynos为例）
+#### 调试
 
-完整的KMS驱动中间含有很多sub drivers不是以前那种简单的一个.c的char driver所能相比的，这种驱动被叫做aggregate driver。不过依然可以找到一条主线来分析它：
+应用程序在drmModeGetConnector(fd, res->connectors[0])获取属性时报错解引用空指针，并打印如下调用栈：
 
-```
-├── exynos5433_drm_decon.c
-├── exynos5433_drm_decon.o
-├── exynos7_drm_decon.c
-├── exynos7_drm_decon.o
-├── exynos_dp.c
-├── exynos_drm_crtc.c
-├── exynos_drm_crtc.h
-├── exynos_drm_crtc.o
-├── exynos_drm_dma.c
-├── exynos_drm_dma.o
-├── exynos_drm_dpi.c
-├── exynos_drm_drv.c
-├── exynos_drm_drv.h
-├── exynos_drm_drv.o
-├── exynos_drm_dsi.c
-├── exynos_drm_dsi.o
-├── exynos_drm_fb.c
-├── exynos_drm_fbdev.c
-├── exynos_drm_fbdev.h
-├── exynos_drm_fbdev.o
-├── exynos_drm_fb.h
-├── exynos_drm_fb.o
-├── exynos_drm_fimc.c
-├── exynos_drm_fimd.c
-├── exynos_drm_g2d.c
-├── exynos_drm_g2d.h
-├── exynos_drm_gem.c
-├── exynos_drm_gem.h
-├── exynos_drm_gem.o
-├── exynos_drm_gsc.c
-├── exynos_drm_ipp.c
-├── exynos_drm_ipp.h
-├── exynosdrm.ko
-├── exynos_drm_mic.c
-├── exynos_drm_mic.o
-├── exynosdrm.mod
-├── exynosdrm.mod.c
-├── exynosdrm.mod.o
-├── exynosdrm.o
-├── exynos_drm_plane.c
-├── exynos_drm_plane.h
-├── exynos_drm_plane.o
-├── exynos_drm_rotator.c
-├── exynos_drm_scaler.c
-├── exynos_drm_vidi.c
-├── exynos_drm_vidi.h
-├── exynos_hdmi.c
-├── exynos_hdmi.o
-├── exynos_mixer.c
-├── Kconfig
-├── Makefile
-├── modules.order
-├── regs-decon5433.h
-├── regs-decon7.h
-├── regs-fimc.h
-├── regs-gsc.h
-├── regs-hdmi.h
-├── regs-mixer.h
-├── regs-rotator.h
-├── regs-scaler.h
-└── regs-vp.h
+```c
+[  369.873125] Call trace:
+[  369.873138]  drm_atomic_get_property+0x46c/0x6e8 [drm]
+[  369.873356]  __drm_object_property_get_value+0x9c/0xb0 [drm]
+[  369.873576]  drm_mode_object_get_properties+0xd8/0x1e0 [drm]
+[  369.873793]  drm_mode_getconnector+0x258/0x4b0 [drm]
+[  369.874009]  drm_ioctl_kernel+0xd8/0x190 [drm]
+[  369.874221]  drm_ioctl+0x220/0x4c0 [drm]
+[  369.874432]  __arm64_sys_ioctl+0xb4/0x100
+[  369.874465]  invoke_syscall+0x50/0x128
+[  369.874491]  el0_svc_common.constprop.0+0x48/0xf0
+[  369.874516]  do_el0_svc+0x24/0x38
+[  369.874539]  el0_svc+0x40/0xe8
+[  369.874565]  el0t_64_sync_handler+0x100/0x130
+[  369.874584]  el0t_64_sync+0x190/0x198
+[  369.874608] Code: 3944b822 17fffff4 92800002 17fffff2 (f9400420) 
+[  369.874630] ---[ end trace 0000000000000000 ]---
+[ 1905.586649] exit called
+[ 1905.586749] ssd1306_remove
+[ 1905.589816] ------------[ cut here ]------------
 ```
 
-从exynos_drm_drv.c开始看起
+排查发现是没有使用drm_mode_config_reset(drm_dev)对connector的state进行初始化，导致后续对state进行解引用出错。drm_mode_config_reset会调用plane crtc encoder以及connector的reset函数对他们进行reset，在上述所有模块都配置完毕后，在drm_dev_register之前完成此操作。
 
-exynos_drm_init()作为入口函数被module_init宏设置到**内核入口**
+```bash
+# 初始化后可以正常获取到connector的各种信息
+Available connector nums: 1
+connector
+Connector ID: 31
+Type: Unknown
+Type ID: 2
+Connection: Connected
+Modes: 0
+Properties: 5
+```
 
-exynos_drm_register_devices()
 
-exynos_drm_register_drivers()
+
+有些必要函数没有初始化在注册drm驱动时会收到warning：
+
+```bash
+[ 9221.234651] WARNING: CPU: 3 PID: 1186 at drivers/gpu/drm/drm_plane.c:262 __drm_universal_plane_init+0x360/0x5c8 [drm]
+[ 9221.234918] Modules linked in: drm_ssd130x(O+) cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc(C) bcm2835_v4l2(C) bcm2835_codec(C) bcm2835_isp(C) v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq(C) vc_sm_cma(C) videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835(C) snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb [last unloaded: drm_ssd130x(O)]
+[ 9221.235274] CPU: 3 PID: 1186 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 #1  Debian 1:6.6.51-1+rpt3
+[ 9221.235291] Hardware name: Raspberry Pi 4 Model B Rev 1.5 (DT)
+[ 9221.235298] pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[ 9221.235312] pc : __drm_universal_plane_init+0x360/0x5c8 [drm]
+[ 9221.235529] lr : drm_universal_plane_init+0x6c/0xa8 [drm]
+[ 9221.235737] sp : ffffffc0817b3700
+[ 9221.235744] x29: ffffffc0817b3700 x28: ffffff80413f4010 x27: ffffffd2f1da1328
+[ 9221.235770] x26: 0000000000000001 x25: ffffffd2f1da32c8 x24: 0000000000000000
+[ 9221.235793] x23: ffffff80413f4fe0 x22: 0000000000000000 x21: ffffff80413f4fe0
+[ 9221.235816] x20: 0000000000000001 x19: ffffff80413f4180 x18: ffffffffffffffff
+[ 9221.235838] x17: 30302d312f312d63 x16: ffffffd3530a6538 x15: ffffffc0817b3590
+[ 9221.235860] x14: ffffff8042632c0a x13: ffffffc0817b3810 x12: ffffffc0817b3818
+[ 9221.235881] x11: 0000000000000000 x10: ffffffc0817b3810 x9 : ffffffd2f180d23c
+[ 9221.235904] x8 : ffffffc0817b37c0 x7 : 0000000000000001 x6 : 0000000000000000
+[ 9221.235925] x5 : 0000000000000001 x4 : ffffffd2f1da32c8 x3 : ffffffd2f1da1328
+[ 9221.235947] x2 : 0000000000000000 x1 : 00000000ffffffff x0 : 0000000000000000
+[ 9221.235968] Call trace:
+[ 9221.235977]  __drm_universal_plane_init+0x360/0x5c8 [drm]
+[ 9221.236186]  drm_universal_plane_init+0x6c/0xa8 [drm]
+[ 9221.236391]  ssd1306_probe+0x148/0x2b8 [drm_ssd130x]
+[ 9221.236421]  i2c_device_probe+0x14c/0x2a0
+[ 9221.236445]  really_probe+0x150/0x2c0
+[ 9221.236460]  __driver_probe_device+0x80/0x140
+[ 9221.236472]  driver_probe_device+0xe0/0x170
+[ 9221.236484]  __driver_attach+0x9c/0x1b0
+[ 9221.236496]  bus_for_each_dev+0x80/0xe8
+[ 9221.236507]  driver_attach+0x2c/0x40
+[ 9221.236518]  bus_add_driver+0xec/0x218
+[ 9221.236528]  driver_register+0x68/0x138
+[ 9221.236541]  i2c_register_driver+0x50/0xd8
+[ 9221.236556]  ssd1306_drv_init+0x60/0xff8 [drm_ssd130x]
+[ 9221.236583]  do_one_initcall+0x60/0x2c0
+[ 9221.236597]  do_init_module+0x60/0x218
+[ 9221.236614]  load_module+0x1dd0/0x2080
+[ 9221.236630]  init_module_from_file+0x8c/0xd8
+[ 9221.236646]  __arm64_sys_finit_module+0x150/0x330
+[ 9221.236662]  invoke_syscall+0x50/0x128
+[ 9221.236680]  el0_svc_common.constprop.0+0x48/0xf0
+[ 9221.236698]  do_el0_svc+0x24/0x38
+[ 9221.236713]  el0_svc+0x40/0xe8
+[ 9221.236733]  el0t_64_sync_handler+0x100/0x130
+[ 9221.236743]  el0t_64_sync+0x190/0x198
+[ 9221.236755] ---[ end trace 0000000000000000 ]---
+[ 9221.236906] ------------[ cut here ]------------
+```
+
+回看kernel代码可知，需要填充atomic_destroy_state以及atomic_duplicate_state：
+
+```c
+WARN_ON(drm_drv_uses_atomic_modeset(dev) &&
+		(!funcs->atomic_destroy_state ||
+		 !funcs->atomic_duplicate_state));
+```
+
+又或者是某些初始化步骤遗忘：
+
+```bash
+[10710.755324] Bogus possible_crtcs: [ENCODER:32:ssd130x_encoder] possible_crtcs=0x0 (full crtc mask=0x1)
+[10710.755398] WARNING: CPU: 2 PID: 1583 at drivers/gpu/drm/drm_mode_config.c:626 drm_mode_config_validate+0x1d0/0x4e8 [drm]
+[10710.755627] Modules linked in: drm_ssd130x(O+) cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc(C) bcm2835_v4l2(C) bcm2835_codec(C) bcm2835_isp(C) v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq(C) vc_sm_cma(C) videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835(C) snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb [last unloaded: drm_ssd130x(O)]
+[10710.755972] CPU: 2 PID: 1583 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 #1  Debian 1:6.6.51-1+rpt3
+[10710.755986] Hardware name: Raspberry Pi 4 Model B Rev 1.5 (DT)
+[10710.755993] pstate: 60000005 (nZCv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[10710.756006] pc : drm_mode_config_validate+0x1d0/0x4e8 [drm]
+[10710.756219] lr : drm_mode_config_validate+0x1d0/0x4e8 [drm]
+[10710.756431] sp : ffffffc081d63760
+[10710.756437] x29: ffffffc081d63770 x28: ffffffd2f1da17b8 x27: ffffff8041a502c0
+[10710.756460] x26: 0000000000000001 x25: ffffff8041a50b78 x24: ffffffd2f1876870
+[10710.756483] x23: ffffffd2f18767f0 x22: ffffff8041a50010 x21: ffffff8041a502c0
+[10710.756505] x20: 0000000000000001 x19: ffffff8041a502b8 x18: ffffffffffffffff
+[10710.756527] x17: 637472635f656c62 x16: 6973736f70205d72 x15: 65646f636e655f78
+[10710.756549] x14: 3033316473733a32 x13: 293178303d6b7361 x12: 6d2063747263206c
+[10710.756571] x11: 6c75662820307830 x10: ffffffd3540b3710 x9 : ffffffd352b098ec
+[10710.756593] x8 : 00000000ffffefff x7 : ffffffd3540b3710 x6 : 80000000fffff000
+[10710.756615] x5 : ffffff807fb8ad48 x4 : 0000000000000000 x3 : 0000000000000027
+[10710.756636] x2 : 0000000000000000 x1 : 0000000000000000 x0 : ffffff80447c3d80
+[10710.756657] Call trace:
+[10710.756665]  drm_mode_config_validate+0x1d0/0x4e8 [drm]
+[10710.756877]  drm_dev_register+0x198/0x268 [drm]
+[10710.757088]  ssd1306_probe+0x190/0x2b8 [drm_ssd130x]
+[10710.757117]  i2c_device_probe+0x14c/0x2a0
+[10710.757136]  really_probe+0x150/0x2c0
+[10710.757149]  __driver_probe_device+0x80/0x140
+[10710.757161]  driver_probe_device+0xe0/0x170
+[10710.757173]  __driver_attach+0x9c/0x1b0
+[10710.757184]  bus_for_each_dev+0x80/0xe8
+[10710.757195]  driver_attach+0x2c/0x40
+[10710.757206]  bus_add_driver+0xec/0x218
+[10710.757216]  driver_register+0x68/0x138
+[10710.757229]  i2c_register_driver+0x50/0xd8
+[10710.757243]  ssd1306_drv_init+0x60/0xff8 [drm_ssd130x]
+[10710.757269]  do_one_initcall+0x60/0x2c0
+[10710.757281]  do_init_module+0x60/0x218
+[10710.757298]  load_module+0x1dd0/0x2080
+[10710.757313]  init_module_from_file+0x8c/0xd8
+[10710.757329]  __arm64_sys_finit_module+0x150/0x330
+[10710.757344]  invoke_syscall+0x50/0x128
+[10710.757362]  el0_svc_common.constprop.0+0x48/0xf0
+[10710.757378]  do_el0_svc+0x24/0x38
+[10710.757394]  el0_svc+0x40/0xe8
+[10710.757413]  el0t_64_sync_handler+0x100/0x130
+[10710.757423]  el0t_64_sync+0x190/0x198
+[10710.757434] ---[ end trace 0000000000000000 ]---
+```
+
+检查kernel代码，validate_encoder_possible_crtcs()函数会检查encoder中的possible_crtcs的配置情况：
+
+```c
+static void validate_encoder_possible_crtcs(struct drm_encoder *encoder)
+{
+	u32 crtc_mask = full_crtc_mask(encoder->dev);
+
+	WARN((encoder->possible_crtcs & crtc_mask) == 0 ||
+	     (encoder->possible_crtcs & ~crtc_mask) != 0,
+	     "Bogus possible_crtcs: "
+	     "[ENCODER:%d:%s] possible_crtcs=0x%x (full crtc mask=0x%x)\n",
+	     encoder->base.id, encoder->name,
+	     encoder->possible_crtcs, crtc_mask);
+}
+
+// 在modeconfig初始化中加入如下
+encoder->possible_crtcs = drm_crtc_mask(crtc);
+```
+
+
+
+
 
 #### DRM解析分发ioctl
 
@@ -596,7 +830,12 @@ EXPORT_SYMBOL(sg_next);
 
 ```
 
+#### 两种显存传递方案
 
+我们来思考一个问题，显存中的内容来自用户空间的应用程序，如何将他们传递到内核空间中去？两种办法：
+
+1. 使用mmap进行内存映射 DRM_IOCTL_MODE_CREATE_DUMB创建  DRM_IOCTL_MODE_MAP_DUMB计算偏移 随后mmap
+2. 使用dmaheap进行export import DMA_HEAP_IOCTL_ALLOC分配 DRM_IOCTL_PRIME_FD_TO_HANDLE进行export
 
 #### 问题
 
@@ -865,3 +1104,5 @@ https://encelo.github.io/trip_through_graphics_pipeline_2011.html
 https://adrian.geek.nz/graphics_docs/DRM.html
 
 http://phd.mupuf.org/files/kr2014.pdf
+
+https://github.com/ascent12/drm_doc
