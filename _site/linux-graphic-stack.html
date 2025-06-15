@@ -195,9 +195,142 @@ python3 ./scripts/clang-tools/gen_compile_commands.py
 
 <h3 id="1-libdrm">1. libdrm</h3>
 
-<p>使用libdrm提供的接口可以完成喜爱那是设置，下面先看一个simple_drm.c程序，程序使用drm接口配置屏幕显示全白：</p>
+<p>在深入DRM框架之前，需要先看一下libdrm中如何用代码描述pipeline。或许一开始难以理解，但是回过头来就变得顺其自然。</p>
 
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;stddef.h&gt;</span><span class="cp">
+<h4 id="1-drm器件">(1) DRM器件</h4>
+
+<p>在使用之前我们需要获取到当前这些drm器件的信息，通过drmModeResPtr:</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">drmModeRes</span> <span class="o">*</span><span class="n">resources</span> <span class="o">=</span> <span class="n">drmModeGetResources</span><span class="p">(</span><span class="s">"/dev/dri/car0"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h5 id="drmmoderes"><strong>drmModeRes</strong></h5>
+
+<p>drmModeResPtr指向的结构体中包含多个drm器件，表示当前pipeline中存在的各种资源</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">_drmModeRes</span> <span class="p">{</span>
+	<span class="kt">int</span> <span class="n">count_fbs</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">fbs</span><span class="p">;</span>
+	
+	<span class="kt">int</span> <span class="n">count_crtcs</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">crtcs</span><span class="p">;</span>
+	
+	<span class="kt">int</span> <span class="n">count_connectors</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">connectors</span><span class="p">;</span>
+	
+	<span class="kt">int</span> <span class="n">count_encoders</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">encoders</span><span class="p">;</span>
+	
+	<span class="kt">uint32_t</span> <span class="n">min_width</span><span class="p">,</span> <span class="n">max_width</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">min_height</span><span class="p">,</span> <span class="n">max_height</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">drmModeRes</span><span class="p">,</span> <span class="o">*</span><span class="n">drmModeResPtr</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h5 id="drmmodeconnector"><strong>drmModeConnector</strong></h5>
+
+<p>connector是最先被用的部件，mode用于描述屏幕的分辨率和刷新率等，mode数组按照显示最优到最差排列，还包含一些properties。mode中支持的宽高在后续会被用于创建framebuffer。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">_drmModeConnector</span> <span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">connector_id</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">encoder_id</span><span class="p">;</span>		<span class="c1">// 当前连接的encoder id</span>
+	<span class="kt">uint32_t</span> <span class="n">connector_type</span><span class="p">;</span>	<span class="c1">// DRM_MODE_CONNECTOR_VGA || DRM_MODE_CONNECTOR_HDMIA</span>
+	<span class="kt">uint32_t</span> <span class="n">connector_type_id</span><span class="p">;</span>
+	<span class="n">drmModeConnection</span> <span class="n">connection</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">mmWidth</span><span class="p">,</span> <span class="n">mmHeight</span><span class="p">;</span> <span class="cm">/**&lt; HxW in millimeters */</span>
+	<span class="n">drmModeSubPixel</span> <span class="n">subpixel</span><span class="p">;</span>
+
+	<span class="kt">int</span> <span class="n">count_modes</span><span class="p">;</span>
+	<span class="n">drmModeModeInfoPtr</span> <span class="n">modes</span><span class="p">;</span> <span class="c1">// mode用于描述屏幕的分辨率刷新率等信息</span>
+
+	<span class="kt">int</span> <span class="n">count_props</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">props</span><span class="p">;</span> <span class="cm">/**&lt; List of property ids */</span>
+	<span class="kt">uint64_t</span> <span class="o">*</span><span class="n">prop_values</span><span class="p">;</span> <span class="cm">/**&lt; List of property values */</span>
+
+	<span class="kt">int</span> <span class="n">count_encoders</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">encoders</span><span class="p">;</span> <span class="cm">/**&lt; List of encoder ids */</span>
+<span class="p">}</span> <span class="n">drmModeConnector</span><span class="p">,</span> <span class="o">*</span><span class="n">drmModeConnectorPtr</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">_drmModeModeInfo</span> <span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">clock</span><span class="p">;</span>
+	<span class="kt">uint16_t</span> <span class="n">hdisplay</span><span class="p">,</span> <span class="n">hsync_start</span><span class="p">,</span> <span class="n">hsync_end</span><span class="p">,</span> <span class="n">htotal</span><span class="p">,</span> <span class="n">hskew</span><span class="p">;</span>
+	<span class="kt">uint16_t</span> <span class="n">vdisplay</span><span class="p">,</span> <span class="n">vsync_start</span><span class="p">,</span> <span class="n">vsync_end</span><span class="p">,</span> <span class="n">vtotal</span><span class="p">,</span> <span class="n">vscan</span><span class="p">;</span>
+
+	<span class="kt">uint32_t</span> <span class="n">vrefresh</span><span class="p">;</span>
+
+	<span class="kt">uint32_t</span> <span class="n">flags</span><span class="p">;</span>
+	<span class="kt">uint32_t</span> <span class="n">type</span><span class="p">;</span>
+	<span class="kt">char</span> <span class="n">name</span><span class="p">[</span><span class="n">DRM_DISPLAY_MODE_LEN</span><span class="p">];</span>
+<span class="p">}</span> <span class="n">drmModeModeInfo</span><span class="p">,</span> <span class="o">*</span><span class="n">drmModeModeInfoPtr</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h5 id="drmmodefb"><strong>drmModeFB</strong></h5>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeFB {
+	uint32_t fb_id;
+	uint32_t width, height;	// framebuffer的大小
+	uint32_t pitch;
+	uint32_t bpp;
+	uint32_t depth;
+
+	uint32_t handle;		// buffer handle用于传入内核查找到实际的内存
+} drmModeFB, *drmModeFBPtr;
+</code></pre></div></div>
+
+<h5 id="drmmodecrtc"><strong>drmModeCrtc</strong></h5>
+
+<p>crtc用于扫描framebuffer，虽然framebuffer与buffer handle结合在一起已经知道想要显示的内容，但是需要crtc控制实际显示区域的大小与位置，不一定整个fb都会显示在屏幕上。</p>
+
+<p><img src="https://i-blog.csdnimg.cn/blog_migrate/c1f6c3fdeef9d3571a45e46580c7379b.png" alt="img" /></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeCrtc {
+	uint32_t crtc_id;
+	uint32_t buffer_id;		// fb id
+
+	uint32_t x, y;			// 位置（x，y）
+	uint32_t width, height;	// 扫描大小
+	int mode_valid;
+	drmModeModeInfo mode;
+
+	int gamma_size; /**&lt; Number of gamma stops */
+
+} drmModeCrtc, *drmModeCrtcPtr;
+</code></pre></div></div>
+
+<h5 id="drmmodeencoder"><strong>drmModeEncoder</strong></h5>
+
+<p>根据显示pipeline，前面我们已经有了显示的内容（framebuffer）和位置大小（crtc）以及显示器支持的协议（connector），似乎还缺少将framebuffer中的像素按照相应协议封装的部件。encoder的工作就是通过协议封装像素</p>
+
+<p>这里面需要特别说明的是<strong>uint32_t possible_crtcs</strong>，这是一个掩码。最开始获取pipeline资源的时候得到的<strong>drmModeRes</strong>包含一个crtc列表，如果bit0被置位1，则表示drmModeRes-&gt;crtc[0]与当前的encoder是匹配的。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeEncoder {
+	uint32_t encoder_id;
+	uint32_t encoder_type;
+	uint32_t crtc_id;
+	uint32_t possible_crtcs;
+	uint32_t possible_clones;
+} drmModeEncoder, *drmModeEncoderPtr;
+</code></pre></div></div>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />如何知道匹配</li>
+</ul>
+
+<h4 id="2-用户空间配置显示pipeline的步骤">(2) 用户空间配置显示pipeline的步骤</h4>
+
+<p><img src="/home/songyj/note/SONGyj123.github.io/image/display_pipeline.svg" alt="" /></p>
+
+<ol>
+  <li><strong>drmModeGetResources获取pipeline资源</strong></li>
+  <li><strong>drmModeGetConnector获取connector</strong></li>
+  <li><strong>drmModeGetEncoder获取encoder</strong> connector中有encoder列表</li>
+  <li><strong>选取可用的crtc</strong> 逐位检查crtc掩码，寻找可用crtc</li>
+  <li><strong>申请内存用于创建显示buffer</strong></li>
+  <li><strong>创建framebuffer并绑定上一步申请的buffer</strong></li>
+</ol>
+
+<p>上述步骤执行完后，显示pipeline就配置完成，理论上就可以进行显示了。这上面的每一步都是一个系统调用，后面我们会进一步分析内核如何返回结果。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define _GNU_SOURCE
 #include</span> <span class="cpf">&lt;errno.h&gt;</span><span class="cp">
 #include</span> <span class="cpf">&lt;fcntl.h&gt;</span><span class="cp">
 #include</span> <span class="cpf">&lt;stdbool.h&gt;</span><span class="cp">
@@ -302,150 +435,7 @@ python3 ./scripts/clang-tools/gen_compile_commands.py
 <span class="p">}</span>
 </code></pre></div></div>
 
-<p><strong><em>为什么將节点换成/dev/dri/renderD128之后segfault？</em></strong></p>
-
-<h4 id="drm器件">DRM器件</h4>
-
-<p>在深入DRM框架之前，需要先看一下libdrm中如何用代码描述pipeline中的drm器件。</p>
-
-<p>在使用之前我们需要获取到当前这些drm器件的信息，通过drmModeResPtr:</p>
-
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">drmModeRes</span> <span class="o">*</span><span class="n">resources</span> <span class="o">=</span> <span class="n">drmModeGetResources</span><span class="p">(</span><span class="s">"/dev/dri/car0"</span><span class="p">);</span>
-</code></pre></div></div>
-
-<h5 id="drmmoderes"><strong>drmModeRes</strong></h5>
-
-<p>drmModeResPtr指向的结构体中包含多个drm器件，表示当前pipeline中存在的各种资源</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeRes {
-	int count_fbs;
-	uint32_t *fbs;
-	
-	int count_crtcs;
-	uint32_t *crtcs;
-	
-	int count_connectors;
-	uint32_t *connectors;
-	
-	int count_encoders;
-	uint32_t *encoders;
-	
-	uint32_t min_width, max_width;
-	uint32_t min_height, max_height;
-} drmModeRes, *drmModeResPtr;
-</code></pre></div></div>
-
-<h5 id="drmmodeconnector"><strong>drmModeConnector</strong></h5>
-
-<p>connector是最先被用的部件，mode用于描述屏幕的分辨率和刷新率等，mode数组按照显示最优到最差排列，还包含一些properties。</p>
-
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">_drmModeConnector</span> <span class="p">{</span>
-	<span class="kt">uint32_t</span> <span class="n">connector_id</span><span class="p">;</span>
-	<span class="kt">uint32_t</span> <span class="n">encoder_id</span><span class="p">;</span>		<span class="c1">// 当前连接的encoder id</span>
-	<span class="kt">uint32_t</span> <span class="n">connector_type</span><span class="p">;</span>	<span class="c1">// DRM_MODE_CONNECTOR_VGA || DRM_MODE_CONNECTOR_HDMIA</span>
-	<span class="kt">uint32_t</span> <span class="n">connector_type_id</span><span class="p">;</span>
-	<span class="n">drmModeConnection</span> <span class="n">connection</span><span class="p">;</span>
-	<span class="kt">uint32_t</span> <span class="n">mmWidth</span><span class="p">,</span> <span class="n">mmHeight</span><span class="p">;</span> <span class="cm">/**&lt; HxW in millimeters */</span>
-	<span class="n">drmModeSubPixel</span> <span class="n">subpixel</span><span class="p">;</span>
-
-	<span class="kt">int</span> <span class="n">count_modes</span><span class="p">;</span>
-	<span class="n">drmModeModeInfoPtr</span> <span class="n">modes</span><span class="p">;</span> <span class="c1">// mode用于描述屏幕的分辨率刷新率等信息</span>
-
-	<span class="kt">int</span> <span class="n">count_props</span><span class="p">;</span>
-	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">props</span><span class="p">;</span> <span class="cm">/**&lt; List of property ids */</span>
-	<span class="kt">uint64_t</span> <span class="o">*</span><span class="n">prop_values</span><span class="p">;</span> <span class="cm">/**&lt; List of property values */</span>
-
-	<span class="kt">int</span> <span class="n">count_encoders</span><span class="p">;</span>
-	<span class="kt">uint32_t</span> <span class="o">*</span><span class="n">encoders</span><span class="p">;</span> <span class="cm">/**&lt; List of encoder ids */</span>
-<span class="p">}</span> <span class="n">drmModeConnector</span><span class="p">,</span> <span class="o">*</span><span class="n">drmModeConnectorPtr</span><span class="p">;</span>
-
-<span class="k">typedef</span> <span class="k">struct</span> <span class="n">_drmModeModeInfo</span> <span class="p">{</span>
-	<span class="kt">uint32_t</span> <span class="n">clock</span><span class="p">;</span>
-	<span class="kt">uint16_t</span> <span class="n">hdisplay</span><span class="p">,</span> <span class="n">hsync_start</span><span class="p">,</span> <span class="n">hsync_end</span><span class="p">,</span> <span class="n">htotal</span><span class="p">,</span> <span class="n">hskew</span><span class="p">;</span>
-	<span class="kt">uint16_t</span> <span class="n">vdisplay</span><span class="p">,</span> <span class="n">vsync_start</span><span class="p">,</span> <span class="n">vsync_end</span><span class="p">,</span> <span class="n">vtotal</span><span class="p">,</span> <span class="n">vscan</span><span class="p">;</span>
-
-	<span class="kt">uint32_t</span> <span class="n">vrefresh</span><span class="p">;</span>
-
-	<span class="kt">uint32_t</span> <span class="n">flags</span><span class="p">;</span>
-	<span class="kt">uint32_t</span> <span class="n">type</span><span class="p">;</span>
-	<span class="kt">char</span> <span class="n">name</span><span class="p">[</span><span class="n">DRM_DISPLAY_MODE_LEN</span><span class="p">];</span>
-<span class="p">}</span> <span class="n">drmModeModeInfo</span><span class="p">,</span> <span class="o">*</span><span class="n">drmModeModeInfoPtr</span><span class="p">;</span>
-</code></pre></div></div>
-
-<h5 id="drmmodefb"><strong>drmModeFB</strong></h5>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeFB {
-	uint32_t fb_id;
-	uint32_t width, height;	// framebuffer的大小
-	uint32_t pitch;
-	uint32_t bpp;
-	uint32_t depth;
-
-	uint32_t handle;		// buffer handle用于传入内核查找到实际的内存
-} drmModeFB, *drmModeFBPtr;
-</code></pre></div></div>
-
-<h5 id="drmmodecrtc"><strong>drmModeCrtc</strong></h5>
-
-<p>crtc用于扫描framebuffer，虽然framebuffer与buffer handle结合在一起已经知道想要显示的内容，但是需要crtc控制实际显示区域的大小与位置，不一定整个fb都会显示在屏幕上。</p>
-
-<p><img src="https://i-blog.csdnimg.cn/blog_migrate/c1f6c3fdeef9d3571a45e46580c7379b.png" alt="img" /></p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeCrtc {
-	uint32_t crtc_id;
-	uint32_t buffer_id;		// fb id
-
-	uint32_t x, y;			// 位置（x，y）
-	uint32_t width, height;	// 扫描大小
-	int mode_valid;
-	drmModeModeInfo mode;
-
-	int gamma_size; /**&lt; Number of gamma stops */
-
-} drmModeCrtc, *drmModeCrtcPtr;
-</code></pre></div></div>
-
-<h5 id="drmmodeencoder"><strong>drmModeEncoder</strong></h5>
-
-<p>根据显示pipeline，前面我们已经有了显示的内容（framebuffer）和位置大小（crtc）以及显示器支持的协议（connector），似乎还缺少将framebuffer中的像素按照相应协议封装的部件。encoder的工作就是通过协议封装像素</p>
-
-<p>这里面需要特别说明的是<strong>uint32_t possible_crtcs</strong>，这是一个掩码。最开始获取pipeline资源的时候得到的<strong>drmModeRes</strong>包含一个crtc列表，如果bit0被置位1，则表示drmModeRes-&gt;crtc[0]与当前的encoder是匹配的。</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct _drmModeEncoder {
-	uint32_t encoder_id;
-	uint32_t encoder_type;
-	uint32_t crtc_id;
-	uint32_t possible_crtcs;
-	uint32_t possible_clones;
-} drmModeEncoder, *drmModeEncoderPtr;
-</code></pre></div></div>
-
-<ul class="task-list">
-  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />如何知道匹配</li>
-</ul>
-
-<h4 id="用户空间配置显示pipeline的步骤">用户空间配置显示pipeline的步骤</h4>
-
-<p><img src="/home/songyj/note/SONGyj123.github.io/image/display_pipeline.svg" alt="" /></p>
-
-<ol>
-  <li><strong>drmModeGetResources获取pipeline资源</strong></li>
-  <li><strong>drmModeGetConnector获取connector</strong></li>
-  <li><strong>drmModeGetEncoder获取encoder</strong> connector中有encoder列表</li>
-  <li><strong>选取可用的crtc</strong> 逐位检查crtc掩码，寻找可用crtc</li>
-  <li><strong>申请内存用于创建显示buffer</strong></li>
-  <li><strong>创建framebuffer并绑定上一步申请的buffer</strong></li>
-</ol>
-
-<h4 id="legacy接口">legacy接口</h4>
-
-<ul>
-  <li><strong>drmModeSetCrtc</strong></li>
-  <li><strong>drmModePageFlip</strong> （只会在vsync的时候进行切换framebuffer，避免画面撕裂）</li>
-  <li><strong>drmModeSetPlane</strong>（只显示framebuffer的部分，之前都是全部显示）使用前需要先调用drmModeSetCrtc打通链路</li>
-</ul>
-
-<h4 id="atomic接口">atomic接口</h4>
+<h4 id="3-atomic接口">(3) atomic接口</h4>
 
 <p>atomic关键词如何理解？</p>
 
@@ -505,7 +495,7 @@ python3 ./scripts/clang-tools/gen_compile_commands.py
 
 <p>drm_atomic_helper_check_modset</p>
 
-<h3 id="kms">KMS</h3>
+<h3 id="3-kmskernel-mode-setting">3. KMS（Kernel Mode Setting）</h3>
 
 <p>DRM driver必须调用<a href="https://www.kernel.org/doc/html/v4.11/gpu/drm-kms.html#c.drm_mode_config_init"><code class="language-plaintext highlighter-rouge">drm_mode_config_init</code></a></p>
 
@@ -520,178 +510,85 @@ python3 ./scripts/clang-tools/gen_compile_commands.py
 
 <p>调用fb_create的ioctl是<strong>DRM_IOCTL_MODE_ADDFB2</strong>，fb_create將gem obj handle和fb绑定，没有绑定handle的fb没有任何实际的显示内容</p>
 
+<h4 id="1-ioctl接口">(1) ioctl接口</h4>
+
+<h5 id="ioctl解析分发">ioctl解析分发</h5>
+
+<p>drm框架中有一个ioctl数组，这里面把DRM_IOCTL_MODE_ADDFB2宏定义和drm_mode_addfb2_ioctl配对起来，使得用户空间可以直接调用到实际的函数。</p>
+
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />DRM_IOCTL_DEF具体原理</li>
+</ul>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// drm_ioctl.c</span>
+<span class="k">static</span> <span class="k">const</span> <span class="k">struct</span> <span class="n">drm_ioctl_desc</span> <span class="n">drm_ioctls</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">...</span>
+    <span class="n">DRM_IOCTL_DEF</span><span class="p">(</span><span class="n">DRM_IOCTL_MODE_ADDFB2</span><span class="p">,</span> <span class="n">drm_mode_addfb2_ioctl</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+    <span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h5 id="drm_ioctl_mode_create_dumb">DRM_IOCTL_MODE_CREATE_DUMB</h5>
+
+<ol>
+  <li>DRM_IOCTL_DEF(DRM_IOCTL_MODE_CREATE_DUMB, drm_mode_create_dumb_ioctl, 0)</li>
+  <li>drm_mode_create_dumb_ioctl调用drm_mode_create_dumb</li>
+  <li>drm_mode_create_dumb检查函数指针和入参是否合法后调用<strong>dev-&gt;driver-&gt;dumb_create</strong></li>
+</ol>
+
+<p>根据上述内容，create_dumb实际最后会调用到drm_driver中的dumb_create成员函数</p>
+
 <h4 id="调试">调试</h4>
 
-<p>应用程序在drmModeGetConnector(fd, res-&gt;connectors[0])获取属性时报错解引用空指针，并打印如下调用栈：</p>
+<p>临时开启drm中的打印</p>
 
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873125</span><span class="p">]</span> <span class="n">Call</span> <span class="n">trace</span><span class="o">:</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873138</span><span class="p">]</span>  <span class="n">drm_atomic_get_property</span><span class="o">+</span><span class="mh">0x46c</span><span class="o">/</span><span class="mh">0x6e8</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873356</span><span class="p">]</span>  <span class="n">__drm_object_property_get_value</span><span class="o">+</span><span class="mh">0x9c</span><span class="o">/</span><span class="mh">0xb0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873576</span><span class="p">]</span>  <span class="n">drm_mode_object_get_properties</span><span class="o">+</span><span class="mh">0xd8</span><span class="o">/</span><span class="mh">0x1e0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873793</span><span class="p">]</span>  <span class="n">drm_mode_getconnector</span><span class="o">+</span><span class="mh">0x258</span><span class="o">/</span><span class="mh">0x4b0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874009</span><span class="p">]</span>  <span class="n">drm_ioctl_kernel</span><span class="o">+</span><span class="mh">0xd8</span><span class="o">/</span><span class="mh">0x190</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874221</span><span class="p">]</span>  <span class="n">drm_ioctl</span><span class="o">+</span><span class="mh">0x220</span><span class="o">/</span><span class="mh">0x4c0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874432</span><span class="p">]</span>  <span class="n">__arm64_sys_ioctl</span><span class="o">+</span><span class="mh">0xb4</span><span class="o">/</span><span class="mh">0x100</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874465</span><span class="p">]</span>  <span class="n">invoke_syscall</span><span class="o">+</span><span class="mh">0x50</span><span class="o">/</span><span class="mh">0x128</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874491</span><span class="p">]</span>  <span class="n">el0_svc_common</span><span class="p">.</span><span class="n">constprop</span><span class="p">.</span><span class="mi">0</span><span class="o">+</span><span class="mh">0x48</span><span class="o">/</span><span class="mh">0xf0</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874516</span><span class="p">]</span>  <span class="n">do_el0_svc</span><span class="o">+</span><span class="mh">0x24</span><span class="o">/</span><span class="mh">0x38</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874539</span><span class="p">]</span>  <span class="n">el0_svc</span><span class="o">+</span><span class="mh">0x40</span><span class="o">/</span><span class="mh">0xe8</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874565</span><span class="p">]</span>  <span class="n">el0t_64_sync_handler</span><span class="o">+</span><span class="mh">0x100</span><span class="o">/</span><span class="mh">0x130</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874584</span><span class="p">]</span>  <span class="n">el0t_64_sync</span><span class="o">+</span><span class="mh">0x190</span><span class="o">/</span><span class="mh">0x198</span>
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874608</span><span class="p">]</span> <span class="n">Code</span><span class="o">:</span> <span class="mi">3944</span><span class="n">b822</span> <span class="mi">17</span><span class="n">fffff4</span> <span class="mi">92800002</span> <span class="mi">17</span><span class="n">fffff2</span> <span class="p">(</span><span class="n">f9400420</span><span class="p">)</span> 
-<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874630</span><span class="p">]</span> <span class="o">---</span><span class="p">[</span> <span class="n">end</span> <span class="n">trace</span> <span class="mo">0000000000000000</span> <span class="p">]</span><span class="o">---</span>
-<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">586649</span><span class="p">]</span> <span class="n">exit</span> <span class="n">called</span>
-<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">586749</span><span class="p">]</span> <span class="n">ssd1306_remove</span>
-<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">589816</span><span class="p">]</span> <span class="o">------------</span><span class="p">[</span> <span class="n">cut</span> <span class="n">here</span> <span class="p">]</span><span class="o">------------</span>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 查看当前的debug日志等级</span>
+songyj@raspberrypi:~/driver/try_i2c <span class="nv">$ </span><span class="nb">sudo cat</span> /sys/module/drm/parameters/debug
+0
+
+<span class="c"># 启用 KMS 调试（0x04）</span>
+<span class="nb">echo </span>0x04 | <span class="nb">sudo tee</span> /sys/module/drm/parameters/debug
+<span class="c"># 或者启用 KMS + ATOMIC 调试（0x04 + 0x10 = 0x14）</span>
+<span class="nb">echo </span>0x14 | <span class="nb">sudo tee</span> /sys/module/drm/parameters/debug
+<span class="c"># 查看当前值（确认是否生效）</span>
+<span class="nb">cat</span> /sys/module/drm/parameters/debug
 </code></pre></div></div>
 
-<p>排查发现是没有使用drm_mode_config_reset(drm_dev)对connector的state进行初始化，导致后续对state进行解引用出错。drm_mode_config_reset会调用plane crtc encoder以及connector的reset函数对他们进行reset，在上述所有模块都配置完毕后，在drm_dev_register之前完成此操作。</p>
+<h3 id="4-gemgraphics-execution-manager">4. GEM（Graphics Execution Manager）</h3>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 初始化后可以正常获取到connector的各种信息</span>
-Available connector nums: 1
-connector
-Connector ID: 31
-Type: Unknown
-Type ID: 2
-Connection: Connected
-Modes: 0
-Properties: 5
+<p>GEM（）作为比ttm更简单的内存管理器，GEM本身通过shmem来分配buffer，shmem分配出的内存不一定是在物理内存上连续的，因此当希望使用物理内存连续的buffer时（DMA搬运需要连续的物理内存），drm驱动需要自己来申请buffer。只需要将gem_object内置在自定结构体中，GEM也可以进行管理。</p>
+
+<blockquote>
+  <p>Anonymous pageable memory allocation is not always desired, for instance when the hardware requires physically contiguous system memory as is often the case in embedded devices. Drivers can create GEM objects with no shmfs backing (called private GEM objects) by initializing them with a call to drm_gem_private_object_init() instead of drm_gem_object_init(). Storage for private GEM objects must be managed by drivers.</p>
+</blockquote>
+
+<p>例如exynos dpu中，drm_gem_object只作为一个管理标记嵌入到自定义的内存结构体，实际的内存分配不通过GEM进行</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="n">exynos_drm_gem</span> <span class="p">{</span>
+	<span class="k">struct</span> <span class="n">drm_gem_object</span>	<span class="n">base</span><span class="p">;</span>
+	<span class="kt">unsigned</span> <span class="kt">int</span>		<span class="n">flags</span><span class="p">;</span>
+	<span class="kt">unsigned</span> <span class="kt">long</span>		<span class="n">size</span><span class="p">;</span>
+	<span class="kt">void</span>			<span class="o">*</span><span class="n">cookie</span><span class="p">;</span>
+	<span class="kt">void</span>			<span class="o">*</span><span class="n">kvaddr</span><span class="p">;</span>
+	<span class="n">dma_addr_t</span>		<span class="n">dma_addr</span><span class="p">;</span>
+	<span class="kt">unsigned</span> <span class="kt">long</span>		<span class="n">dma_attrs</span><span class="p">;</span>
+	<span class="k">struct</span> <span class="n">sg_table</span>		<span class="o">*</span><span class="n">sgt</span><span class="p">;</span>
+<span class="p">};</span>
 </code></pre></div></div>
 
-<p>有些必要函数没有初始化在注册drm驱动时会收到warning：</p>
+<h4 id="gem-handle">GEM handle</h4>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span> 9221.234651] WARNING: CPU: 3 PID: 1186 at drivers/gpu/drm/drm_plane.c:262 __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
-<span class="o">[</span> 9221.234918] Modules linked <span class="k">in</span>: drm_ssd130x<span class="o">(</span>O+<span class="o">)</span> cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc<span class="o">(</span>C<span class="o">)</span> bcm2835_v4l2<span class="o">(</span>C<span class="o">)</span> bcm2835_codec<span class="o">(</span>C<span class="o">)</span> bcm2835_isp<span class="o">(</span>C<span class="o">)</span> v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq<span class="o">(</span>C<span class="o">)</span> vc_sm_cma<span class="o">(</span>C<span class="o">)</span> videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835<span class="o">(</span>C<span class="o">)</span> snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb <span class="o">[</span>last unloaded: drm_ssd130x<span class="o">(</span>O<span class="o">)]</span>
-<span class="o">[</span> 9221.235274] CPU: 3 PID: 1186 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 <span class="c">#1  Debian 1:6.6.51-1+rpt3</span>
-<span class="o">[</span> 9221.235291] Hardware name: Raspberry Pi 4 Model B Rev 1.5 <span class="o">(</span>DT<span class="o">)</span>
-<span class="o">[</span> 9221.235298] pstate: 80000005 <span class="o">(</span>Nzcv daif <span class="nt">-PAN</span> <span class="nt">-UAO</span> <span class="nt">-TCO</span> <span class="nt">-DIT</span> <span class="nt">-SSBS</span> <span class="nv">BTYPE</span><span class="o">=</span><span class="nt">--</span><span class="o">)</span>
-<span class="o">[</span> 9221.235312] pc : __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
-<span class="o">[</span> 9221.235529] lr : drm_universal_plane_init+0x6c/0xa8 <span class="o">[</span>drm]
-<span class="o">[</span> 9221.235737] sp : ffffffc0817b3700
-<span class="o">[</span> 9221.235744] x29: ffffffc0817b3700 x28: ffffff80413f4010 x27: ffffffd2f1da1328
-<span class="o">[</span> 9221.235770] x26: 0000000000000001 x25: ffffffd2f1da32c8 x24: 0000000000000000
-<span class="o">[</span> 9221.235793] x23: ffffff80413f4fe0 x22: 0000000000000000 x21: ffffff80413f4fe0
-<span class="o">[</span> 9221.235816] x20: 0000000000000001 x19: ffffff80413f4180 x18: ffffffffffffffff
-<span class="o">[</span> 9221.235838] x17: 30302d312f312d63 x16: ffffffd3530a6538 x15: ffffffc0817b3590
-<span class="o">[</span> 9221.235860] x14: ffffff8042632c0a x13: ffffffc0817b3810 x12: ffffffc0817b3818
-<span class="o">[</span> 9221.235881] x11: 0000000000000000 x10: ffffffc0817b3810 x9 : ffffffd2f180d23c
-<span class="o">[</span> 9221.235904] x8 : ffffffc0817b37c0 x7 : 0000000000000001 x6 : 0000000000000000
-<span class="o">[</span> 9221.235925] x5 : 0000000000000001 x4 : ffffffd2f1da32c8 x3 : ffffffd2f1da1328
-<span class="o">[</span> 9221.235947] x2 : 0000000000000000 x1 : 00000000ffffffff x0 : 0000000000000000
-<span class="o">[</span> 9221.235968] Call trace:
-<span class="o">[</span> 9221.235977]  __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
-<span class="o">[</span> 9221.236186]  drm_universal_plane_init+0x6c/0xa8 <span class="o">[</span>drm]
-<span class="o">[</span> 9221.236391]  ssd1306_probe+0x148/0x2b8 <span class="o">[</span>drm_ssd130x]
-<span class="o">[</span> 9221.236421]  i2c_device_probe+0x14c/0x2a0
-<span class="o">[</span> 9221.236445]  really_probe+0x150/0x2c0
-<span class="o">[</span> 9221.236460]  __driver_probe_device+0x80/0x140
-<span class="o">[</span> 9221.236472]  driver_probe_device+0xe0/0x170
-<span class="o">[</span> 9221.236484]  __driver_attach+0x9c/0x1b0
-<span class="o">[</span> 9221.236496]  bus_for_each_dev+0x80/0xe8
-<span class="o">[</span> 9221.236507]  driver_attach+0x2c/0x40
-<span class="o">[</span> 9221.236518]  bus_add_driver+0xec/0x218
-<span class="o">[</span> 9221.236528]  driver_register+0x68/0x138
-<span class="o">[</span> 9221.236541]  i2c_register_driver+0x50/0xd8
-<span class="o">[</span> 9221.236556]  ssd1306_drv_init+0x60/0xff8 <span class="o">[</span>drm_ssd130x]
-<span class="o">[</span> 9221.236583]  do_one_initcall+0x60/0x2c0
-<span class="o">[</span> 9221.236597]  do_init_module+0x60/0x218
-<span class="o">[</span> 9221.236614]  load_module+0x1dd0/0x2080
-<span class="o">[</span> 9221.236630]  init_module_from_file+0x8c/0xd8
-<span class="o">[</span> 9221.236646]  __arm64_sys_finit_module+0x150/0x330
-<span class="o">[</span> 9221.236662]  invoke_syscall+0x50/0x128
-<span class="o">[</span> 9221.236680]  el0_svc_common.constprop.0+0x48/0xf0
-<span class="o">[</span> 9221.236698]  do_el0_svc+0x24/0x38
-<span class="o">[</span> 9221.236713]  el0_svc+0x40/0xe8
-<span class="o">[</span> 9221.236733]  el0t_64_sync_handler+0x100/0x130
-<span class="o">[</span> 9221.236743]  el0t_64_sync+0x190/0x198
-<span class="o">[</span> 9221.236755] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
-<span class="o">[</span> 9221.236906] <span class="nt">------------</span><span class="o">[</span> <span class="nb">cut </span>here <span class="o">]</span><span class="nt">------------</span>
-</code></pre></div></div>
+<p>drm_gem_object很大一块，如果可以通过一个数字一样的index和drm_gem_object对应起来，就能快速找到平匹配的object，而传递的时候只需要传递这个index就好了。</p>
 
-<p>回看kernel代码可知，需要填充atomic_destroy_state以及atomic_duplicate_state：</p>
+<p>这个index就是gem handle，驱动中通过drm_gem_handle_create进行drm_gem_object-&gt;gem_handle的转换。handle的数值怎么生成的呢？通过kernel中的idr分配</p>
 
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">WARN_ON</span><span class="p">(</span><span class="n">drm_drv_uses_atomic_modeset</span><span class="p">(</span><span class="n">dev</span><span class="p">)</span> <span class="o">&amp;&amp;</span>
-		<span class="p">(</span><span class="o">!</span><span class="n">funcs</span><span class="o">-&gt;</span><span class="n">atomic_destroy_state</span> <span class="o">||</span>
-		 <span class="o">!</span><span class="n">funcs</span><span class="o">-&gt;</span><span class="n">atomic_duplicate_state</span><span class="p">));</span>
-</code></pre></div></div>
+<h4 id="gem-mapping">GEM mapping</h4>
 
-<p>又或者是某些初始化步骤遗忘：</p>
+<ul class="task-list">
+  <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled="disabled" />todo</li>
+</ul>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>10710.755324] Bogus possible_crtcs: <span class="o">[</span>ENCODER:32:ssd130x_encoder] <span class="nv">possible_crtcs</span><span class="o">=</span>0x0 <span class="o">(</span>full crtc <span class="nv">mask</span><span class="o">=</span>0x1<span class="o">)</span>
-<span class="o">[</span>10710.755398] WARNING: CPU: 2 PID: 1583 at drivers/gpu/drm/drm_mode_config.c:626 drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
-<span class="o">[</span>10710.755627] Modules linked <span class="k">in</span>: drm_ssd130x<span class="o">(</span>O+<span class="o">)</span> cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc<span class="o">(</span>C<span class="o">)</span> bcm2835_v4l2<span class="o">(</span>C<span class="o">)</span> bcm2835_codec<span class="o">(</span>C<span class="o">)</span> bcm2835_isp<span class="o">(</span>C<span class="o">)</span> v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq<span class="o">(</span>C<span class="o">)</span> vc_sm_cma<span class="o">(</span>C<span class="o">)</span> videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835<span class="o">(</span>C<span class="o">)</span> snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb <span class="o">[</span>last unloaded: drm_ssd130x<span class="o">(</span>O<span class="o">)]</span>
-<span class="o">[</span>10710.755972] CPU: 2 PID: 1583 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 <span class="c">#1  Debian 1:6.6.51-1+rpt3</span>
-<span class="o">[</span>10710.755986] Hardware name: Raspberry Pi 4 Model B Rev 1.5 <span class="o">(</span>DT<span class="o">)</span>
-<span class="o">[</span>10710.755993] pstate: 60000005 <span class="o">(</span>nZCv daif <span class="nt">-PAN</span> <span class="nt">-UAO</span> <span class="nt">-TCO</span> <span class="nt">-DIT</span> <span class="nt">-SSBS</span> <span class="nv">BTYPE</span><span class="o">=</span><span class="nt">--</span><span class="o">)</span>
-<span class="o">[</span>10710.756006] pc : drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
-<span class="o">[</span>10710.756219] lr : drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
-<span class="o">[</span>10710.756431] sp : ffffffc081d63760
-<span class="o">[</span>10710.756437] x29: ffffffc081d63770 x28: ffffffd2f1da17b8 x27: ffffff8041a502c0
-<span class="o">[</span>10710.756460] x26: 0000000000000001 x25: ffffff8041a50b78 x24: ffffffd2f1876870
-<span class="o">[</span>10710.756483] x23: ffffffd2f18767f0 x22: ffffff8041a50010 x21: ffffff8041a502c0
-<span class="o">[</span>10710.756505] x20: 0000000000000001 x19: ffffff8041a502b8 x18: ffffffffffffffff
-<span class="o">[</span>10710.756527] x17: 637472635f656c62 x16: 6973736f70205d72 x15: 65646f636e655f78
-<span class="o">[</span>10710.756549] x14: 3033316473733a32 x13: 293178303d6b7361 x12: 6d2063747263206c
-<span class="o">[</span>10710.756571] x11: 6c75662820307830 x10: ffffffd3540b3710 x9 : ffffffd352b098ec
-<span class="o">[</span>10710.756593] x8 : 00000000ffffefff x7 : ffffffd3540b3710 x6 : 80000000fffff000
-<span class="o">[</span>10710.756615] x5 : ffffff807fb8ad48 x4 : 0000000000000000 x3 : 0000000000000027
-<span class="o">[</span>10710.756636] x2 : 0000000000000000 x1 : 0000000000000000 x0 : ffffff80447c3d80
-<span class="o">[</span>10710.756657] Call trace:
-<span class="o">[</span>10710.756665]  drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
-<span class="o">[</span>10710.756877]  drm_dev_register+0x198/0x268 <span class="o">[</span>drm]
-<span class="o">[</span>10710.757088]  ssd1306_probe+0x190/0x2b8 <span class="o">[</span>drm_ssd130x]
-<span class="o">[</span>10710.757117]  i2c_device_probe+0x14c/0x2a0
-<span class="o">[</span>10710.757136]  really_probe+0x150/0x2c0
-<span class="o">[</span>10710.757149]  __driver_probe_device+0x80/0x140
-<span class="o">[</span>10710.757161]  driver_probe_device+0xe0/0x170
-<span class="o">[</span>10710.757173]  __driver_attach+0x9c/0x1b0
-<span class="o">[</span>10710.757184]  bus_for_each_dev+0x80/0xe8
-<span class="o">[</span>10710.757195]  driver_attach+0x2c/0x40
-<span class="o">[</span>10710.757206]  bus_add_driver+0xec/0x218
-<span class="o">[</span>10710.757216]  driver_register+0x68/0x138
-<span class="o">[</span>10710.757229]  i2c_register_driver+0x50/0xd8
-<span class="o">[</span>10710.757243]  ssd1306_drv_init+0x60/0xff8 <span class="o">[</span>drm_ssd130x]
-<span class="o">[</span>10710.757269]  do_one_initcall+0x60/0x2c0
-<span class="o">[</span>10710.757281]  do_init_module+0x60/0x218
-<span class="o">[</span>10710.757298]  load_module+0x1dd0/0x2080
-<span class="o">[</span>10710.757313]  init_module_from_file+0x8c/0xd8
-<span class="o">[</span>10710.757329]  __arm64_sys_finit_module+0x150/0x330
-<span class="o">[</span>10710.757344]  invoke_syscall+0x50/0x128
-<span class="o">[</span>10710.757362]  el0_svc_common.constprop.0+0x48/0xf0
-<span class="o">[</span>10710.757378]  do_el0_svc+0x24/0x38
-<span class="o">[</span>10710.757394]  el0_svc+0x40/0xe8
-<span class="o">[</span>10710.757413]  el0t_64_sync_handler+0x100/0x130
-<span class="o">[</span>10710.757423]  el0t_64_sync+0x190/0x198
-<span class="o">[</span>10710.757434] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
-</code></pre></div></div>
-
-<p>检查kernel代码，validate_encoder_possible_crtcs()函数会检查encoder中的possible_crtcs的配置情况：</p>
-
-<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">static</span> <span class="kt">void</span> <span class="nf">validate_encoder_possible_crtcs</span><span class="p">(</span><span class="k">struct</span> <span class="n">drm_encoder</span> <span class="o">*</span><span class="n">encoder</span><span class="p">)</span>
-<span class="p">{</span>
-	<span class="n">u32</span> <span class="n">crtc_mask</span> <span class="o">=</span> <span class="n">full_crtc_mask</span><span class="p">(</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">);</span>
-
-	<span class="n">WARN</span><span class="p">((</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">&amp;</span> <span class="n">crtc_mask</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">||</span>
-	     <span class="p">(</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">crtc_mask</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">,</span>
-	     <span class="s">"Bogus possible_crtcs: "</span>
-	     <span class="s">"[ENCODER:%d:%s] possible_crtcs=0x%x (full crtc mask=0x%x)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
-	     <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">base</span><span class="p">.</span><span class="n">id</span><span class="p">,</span> <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span>
-	     <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span><span class="p">,</span> <span class="n">crtc_mask</span><span class="p">);</span>
-<span class="p">}</span>
-
-<span class="c1">// 在modeconfig初始化中加入如下</span>
-<span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">=</span> <span class="n">drm_crtc_mask</span><span class="p">(</span><span class="n">crtc</span><span class="p">);</span>
-</code></pre></div></div>
-
-<h4 id="drm解析分发ioctl">DRM解析分发ioctl</h4>
-
-<p>用户程序接口的名字和ioctl的名字不一定一致</p>
-
-<p>atomic ioctl由一个ioctl统一分发</p>
-
-<p>GEM是内存分配机制，dma-buf是内存共享机制，GEM和dma-buf结合使用。</p>
-
-<h4 id="dma-buf">dma-buf</h4>
+<h3 id="dma-buf">dma-buf</h3>
 
 <p>dma-buf在内核空间和用户空间中的表显形式不一样，在用户空间中是一个<strong>fd</strong>，在内核中是<strong>struct dma_buf</strong></p>
 
@@ -1088,6 +985,274 @@ name <span class="s2">"fake_gpu"</span>, bus PCI
 <span class="p">};</span>
 
 <span class="n">module_pci_driver</span><span class="p">(</span><span class="n">fake_gpu_driver</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h3 id="调试-1">调试</h3>
+
+<p>（1）</p>
+
+<p>应用程序在drmModeGetConnector(fd, res-&gt;connectors[0])获取属性时报错解引用空指针，并打印如下调用栈：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873125</span><span class="p">]</span> <span class="n">Call</span> <span class="n">trace</span><span class="o">:</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873138</span><span class="p">]</span>  <span class="n">drm_atomic_get_property</span><span class="o">+</span><span class="mh">0x46c</span><span class="o">/</span><span class="mh">0x6e8</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873356</span><span class="p">]</span>  <span class="n">__drm_object_property_get_value</span><span class="o">+</span><span class="mh">0x9c</span><span class="o">/</span><span class="mh">0xb0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873576</span><span class="p">]</span>  <span class="n">drm_mode_object_get_properties</span><span class="o">+</span><span class="mh">0xd8</span><span class="o">/</span><span class="mh">0x1e0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">873793</span><span class="p">]</span>  <span class="n">drm_mode_getconnector</span><span class="o">+</span><span class="mh">0x258</span><span class="o">/</span><span class="mh">0x4b0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874009</span><span class="p">]</span>  <span class="n">drm_ioctl_kernel</span><span class="o">+</span><span class="mh">0xd8</span><span class="o">/</span><span class="mh">0x190</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874221</span><span class="p">]</span>  <span class="n">drm_ioctl</span><span class="o">+</span><span class="mh">0x220</span><span class="o">/</span><span class="mh">0x4c0</span> <span class="p">[</span><span class="n">drm</span><span class="p">]</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874432</span><span class="p">]</span>  <span class="n">__arm64_sys_ioctl</span><span class="o">+</span><span class="mh">0xb4</span><span class="o">/</span><span class="mh">0x100</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874465</span><span class="p">]</span>  <span class="n">invoke_syscall</span><span class="o">+</span><span class="mh">0x50</span><span class="o">/</span><span class="mh">0x128</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874491</span><span class="p">]</span>  <span class="n">el0_svc_common</span><span class="p">.</span><span class="n">constprop</span><span class="p">.</span><span class="mi">0</span><span class="o">+</span><span class="mh">0x48</span><span class="o">/</span><span class="mh">0xf0</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874516</span><span class="p">]</span>  <span class="n">do_el0_svc</span><span class="o">+</span><span class="mh">0x24</span><span class="o">/</span><span class="mh">0x38</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874539</span><span class="p">]</span>  <span class="n">el0_svc</span><span class="o">+</span><span class="mh">0x40</span><span class="o">/</span><span class="mh">0xe8</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874565</span><span class="p">]</span>  <span class="n">el0t_64_sync_handler</span><span class="o">+</span><span class="mh">0x100</span><span class="o">/</span><span class="mh">0x130</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874584</span><span class="p">]</span>  <span class="n">el0t_64_sync</span><span class="o">+</span><span class="mh">0x190</span><span class="o">/</span><span class="mh">0x198</span>
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874608</span><span class="p">]</span> <span class="n">Code</span><span class="o">:</span> <span class="mi">3944</span><span class="n">b822</span> <span class="mi">17</span><span class="n">fffff4</span> <span class="mi">92800002</span> <span class="mi">17</span><span class="n">fffff2</span> <span class="p">(</span><span class="n">f9400420</span><span class="p">)</span> 
+<span class="p">[</span>  <span class="mi">369</span><span class="p">.</span><span class="mi">874630</span><span class="p">]</span> <span class="o">---</span><span class="p">[</span> <span class="n">end</span> <span class="n">trace</span> <span class="mo">0000000000000000</span> <span class="p">]</span><span class="o">---</span>
+<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">586649</span><span class="p">]</span> <span class="n">exit</span> <span class="n">called</span>
+<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">586749</span><span class="p">]</span> <span class="n">ssd1306_remove</span>
+<span class="p">[</span> <span class="mi">1905</span><span class="p">.</span><span class="mi">589816</span><span class="p">]</span> <span class="o">------------</span><span class="p">[</span> <span class="n">cut</span> <span class="n">here</span> <span class="p">]</span><span class="o">------------</span>
+</code></pre></div></div>
+
+<p>排查发现是没有使用drm_mode_config_reset(drm_dev)对connector的state进行初始化，导致后续对state进行解引用出错。drm_mode_config_reset会调用plane crtc encoder以及connector的reset函数对他们进行reset，在上述所有模块都配置完毕后，在drm_dev_register之前完成此操作。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 初始化后可以正常获取到connector的各种信息</span>
+Available connector nums: 1
+connector
+Connector ID: 31
+Type: Unknown
+Type ID: 2
+Connection: Connected
+Modes: 0
+Properties: 5
+</code></pre></div></div>
+
+<p>有些必要函数没有初始化在注册drm驱动时会收到warning：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span> 9221.234651] WARNING: CPU: 3 PID: 1186 at drivers/gpu/drm/drm_plane.c:262 __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
+<span class="o">[</span> 9221.234918] Modules linked <span class="k">in</span>: drm_ssd130x<span class="o">(</span>O+<span class="o">)</span> cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc<span class="o">(</span>C<span class="o">)</span> bcm2835_v4l2<span class="o">(</span>C<span class="o">)</span> bcm2835_codec<span class="o">(</span>C<span class="o">)</span> bcm2835_isp<span class="o">(</span>C<span class="o">)</span> v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq<span class="o">(</span>C<span class="o">)</span> vc_sm_cma<span class="o">(</span>C<span class="o">)</span> videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835<span class="o">(</span>C<span class="o">)</span> snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb <span class="o">[</span>last unloaded: drm_ssd130x<span class="o">(</span>O<span class="o">)]</span>
+<span class="o">[</span> 9221.235274] CPU: 3 PID: 1186 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 <span class="c">#1  Debian 1:6.6.51-1+rpt3</span>
+<span class="o">[</span> 9221.235291] Hardware name: Raspberry Pi 4 Model B Rev 1.5 <span class="o">(</span>DT<span class="o">)</span>
+<span class="o">[</span> 9221.235298] pstate: 80000005 <span class="o">(</span>Nzcv daif <span class="nt">-PAN</span> <span class="nt">-UAO</span> <span class="nt">-TCO</span> <span class="nt">-DIT</span> <span class="nt">-SSBS</span> <span class="nv">BTYPE</span><span class="o">=</span><span class="nt">--</span><span class="o">)</span>
+<span class="o">[</span> 9221.235312] pc : __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
+<span class="o">[</span> 9221.235529] lr : drm_universal_plane_init+0x6c/0xa8 <span class="o">[</span>drm]
+<span class="o">[</span> 9221.235737] sp : ffffffc0817b3700
+<span class="o">[</span> 9221.235744] x29: ffffffc0817b3700 x28: ffffff80413f4010 x27: ffffffd2f1da1328
+<span class="o">[</span> 9221.235770] x26: 0000000000000001 x25: ffffffd2f1da32c8 x24: 0000000000000000
+<span class="o">[</span> 9221.235793] x23: ffffff80413f4fe0 x22: 0000000000000000 x21: ffffff80413f4fe0
+<span class="o">[</span> 9221.235816] x20: 0000000000000001 x19: ffffff80413f4180 x18: ffffffffffffffff
+<span class="o">[</span> 9221.235838] x17: 30302d312f312d63 x16: ffffffd3530a6538 x15: ffffffc0817b3590
+<span class="o">[</span> 9221.235860] x14: ffffff8042632c0a x13: ffffffc0817b3810 x12: ffffffc0817b3818
+<span class="o">[</span> 9221.235881] x11: 0000000000000000 x10: ffffffc0817b3810 x9 : ffffffd2f180d23c
+<span class="o">[</span> 9221.235904] x8 : ffffffc0817b37c0 x7 : 0000000000000001 x6 : 0000000000000000
+<span class="o">[</span> 9221.235925] x5 : 0000000000000001 x4 : ffffffd2f1da32c8 x3 : ffffffd2f1da1328
+<span class="o">[</span> 9221.235947] x2 : 0000000000000000 x1 : 00000000ffffffff x0 : 0000000000000000
+<span class="o">[</span> 9221.235968] Call trace:
+<span class="o">[</span> 9221.235977]  __drm_universal_plane_init+0x360/0x5c8 <span class="o">[</span>drm]
+<span class="o">[</span> 9221.236186]  drm_universal_plane_init+0x6c/0xa8 <span class="o">[</span>drm]
+<span class="o">[</span> 9221.236391]  ssd1306_probe+0x148/0x2b8 <span class="o">[</span>drm_ssd130x]
+<span class="o">[</span> 9221.236421]  i2c_device_probe+0x14c/0x2a0
+<span class="o">[</span> 9221.236445]  really_probe+0x150/0x2c0
+<span class="o">[</span> 9221.236460]  __driver_probe_device+0x80/0x140
+<span class="o">[</span> 9221.236472]  driver_probe_device+0xe0/0x170
+<span class="o">[</span> 9221.236484]  __driver_attach+0x9c/0x1b0
+<span class="o">[</span> 9221.236496]  bus_for_each_dev+0x80/0xe8
+<span class="o">[</span> 9221.236507]  driver_attach+0x2c/0x40
+<span class="o">[</span> 9221.236518]  bus_add_driver+0xec/0x218
+<span class="o">[</span> 9221.236528]  driver_register+0x68/0x138
+<span class="o">[</span> 9221.236541]  i2c_register_driver+0x50/0xd8
+<span class="o">[</span> 9221.236556]  ssd1306_drv_init+0x60/0xff8 <span class="o">[</span>drm_ssd130x]
+<span class="o">[</span> 9221.236583]  do_one_initcall+0x60/0x2c0
+<span class="o">[</span> 9221.236597]  do_init_module+0x60/0x218
+<span class="o">[</span> 9221.236614]  load_module+0x1dd0/0x2080
+<span class="o">[</span> 9221.236630]  init_module_from_file+0x8c/0xd8
+<span class="o">[</span> 9221.236646]  __arm64_sys_finit_module+0x150/0x330
+<span class="o">[</span> 9221.236662]  invoke_syscall+0x50/0x128
+<span class="o">[</span> 9221.236680]  el0_svc_common.constprop.0+0x48/0xf0
+<span class="o">[</span> 9221.236698]  do_el0_svc+0x24/0x38
+<span class="o">[</span> 9221.236713]  el0_svc+0x40/0xe8
+<span class="o">[</span> 9221.236733]  el0t_64_sync_handler+0x100/0x130
+<span class="o">[</span> 9221.236743]  el0t_64_sync+0x190/0x198
+<span class="o">[</span> 9221.236755] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
+<span class="o">[</span> 9221.236906] <span class="nt">------------</span><span class="o">[</span> <span class="nb">cut </span>here <span class="o">]</span><span class="nt">------------</span>
+</code></pre></div></div>
+
+<p>回看kernel代码可知，需要填充atomic_destroy_state以及atomic_duplicate_state：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">WARN_ON</span><span class="p">(</span><span class="n">drm_drv_uses_atomic_modeset</span><span class="p">(</span><span class="n">dev</span><span class="p">)</span> <span class="o">&amp;&amp;</span>
+		<span class="p">(</span><span class="o">!</span><span class="n">funcs</span><span class="o">-&gt;</span><span class="n">atomic_destroy_state</span> <span class="o">||</span>
+		 <span class="o">!</span><span class="n">funcs</span><span class="o">-&gt;</span><span class="n">atomic_duplicate_state</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p>又或者是某些初始化步骤遗忘：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>10710.755324] Bogus possible_crtcs: <span class="o">[</span>ENCODER:32:ssd130x_encoder] <span class="nv">possible_crtcs</span><span class="o">=</span>0x0 <span class="o">(</span>full crtc <span class="nv">mask</span><span class="o">=</span>0x1<span class="o">)</span>
+<span class="o">[</span>10710.755398] WARNING: CPU: 2 PID: 1583 at drivers/gpu/drm/drm_mode_config.c:626 drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
+<span class="o">[</span>10710.755627] Modules linked <span class="k">in</span>: drm_ssd130x<span class="o">(</span>O+<span class="o">)</span> cmac algif_hash aes_arm64 aes_generic algif_skcipher af_alg bnep brcmfmac_wcc hci_uart vc4 btbcm brcmfmac bluetooth brcmutil cfg80211 snd_soc_hdmi_codec drm_display_helper cec raspberrypi_hwmon drm_dma_helper ecdh_generic ecc rfkill drm_kms_helper libaes binfmt_misc raspberrypi_gpiomem rpivid_hevc<span class="o">(</span>C<span class="o">)</span> bcm2835_v4l2<span class="o">(</span>C<span class="o">)</span> bcm2835_codec<span class="o">(</span>C<span class="o">)</span> bcm2835_isp<span class="o">(</span>C<span class="o">)</span> v4l2_mem2mem snd_soc_core bcm2835_mmal_vchiq<span class="o">(</span>C<span class="o">)</span> vc_sm_cma<span class="o">(</span>C<span class="o">)</span> videobuf2_dma_contig videobuf2_vmalloc snd_compress videobuf2_memops videobuf2_v4l2 joydev snd_bcm2835<span class="o">(</span>C<span class="o">)</span> snd_pcm_dmaengine videodev snd_pcm v3d videobuf2_common gpu_sched snd_timer mc drm_shmem_helper snd nvmem_rmem uio_pdrv_genirq uio drm i2c_dev fuse dm_mod drm_panel_orientation_quirks backlight ip_tables x_tables ipv6 hid_apple i2c_bcm2835 i2c_brcmstb <span class="o">[</span>last unloaded: drm_ssd130x<span class="o">(</span>O<span class="o">)]</span>
+<span class="o">[</span>10710.755972] CPU: 2 PID: 1583 Comm: insmod Tainted: G        WC O       6.6.51+rpt-rpi-v8 <span class="c">#1  Debian 1:6.6.51-1+rpt3</span>
+<span class="o">[</span>10710.755986] Hardware name: Raspberry Pi 4 Model B Rev 1.5 <span class="o">(</span>DT<span class="o">)</span>
+<span class="o">[</span>10710.755993] pstate: 60000005 <span class="o">(</span>nZCv daif <span class="nt">-PAN</span> <span class="nt">-UAO</span> <span class="nt">-TCO</span> <span class="nt">-DIT</span> <span class="nt">-SSBS</span> <span class="nv">BTYPE</span><span class="o">=</span><span class="nt">--</span><span class="o">)</span>
+<span class="o">[</span>10710.756006] pc : drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
+<span class="o">[</span>10710.756219] lr : drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
+<span class="o">[</span>10710.756431] sp : ffffffc081d63760
+<span class="o">[</span>10710.756437] x29: ffffffc081d63770 x28: ffffffd2f1da17b8 x27: ffffff8041a502c0
+<span class="o">[</span>10710.756460] x26: 0000000000000001 x25: ffffff8041a50b78 x24: ffffffd2f1876870
+<span class="o">[</span>10710.756483] x23: ffffffd2f18767f0 x22: ffffff8041a50010 x21: ffffff8041a502c0
+<span class="o">[</span>10710.756505] x20: 0000000000000001 x19: ffffff8041a502b8 x18: ffffffffffffffff
+<span class="o">[</span>10710.756527] x17: 637472635f656c62 x16: 6973736f70205d72 x15: 65646f636e655f78
+<span class="o">[</span>10710.756549] x14: 3033316473733a32 x13: 293178303d6b7361 x12: 6d2063747263206c
+<span class="o">[</span>10710.756571] x11: 6c75662820307830 x10: ffffffd3540b3710 x9 : ffffffd352b098ec
+<span class="o">[</span>10710.756593] x8 : 00000000ffffefff x7 : ffffffd3540b3710 x6 : 80000000fffff000
+<span class="o">[</span>10710.756615] x5 : ffffff807fb8ad48 x4 : 0000000000000000 x3 : 0000000000000027
+<span class="o">[</span>10710.756636] x2 : 0000000000000000 x1 : 0000000000000000 x0 : ffffff80447c3d80
+<span class="o">[</span>10710.756657] Call trace:
+<span class="o">[</span>10710.756665]  drm_mode_config_validate+0x1d0/0x4e8 <span class="o">[</span>drm]
+<span class="o">[</span>10710.756877]  drm_dev_register+0x198/0x268 <span class="o">[</span>drm]
+<span class="o">[</span>10710.757088]  ssd1306_probe+0x190/0x2b8 <span class="o">[</span>drm_ssd130x]
+<span class="o">[</span>10710.757117]  i2c_device_probe+0x14c/0x2a0
+<span class="o">[</span>10710.757136]  really_probe+0x150/0x2c0
+<span class="o">[</span>10710.757149]  __driver_probe_device+0x80/0x140
+<span class="o">[</span>10710.757161]  driver_probe_device+0xe0/0x170
+<span class="o">[</span>10710.757173]  __driver_attach+0x9c/0x1b0
+<span class="o">[</span>10710.757184]  bus_for_each_dev+0x80/0xe8
+<span class="o">[</span>10710.757195]  driver_attach+0x2c/0x40
+<span class="o">[</span>10710.757206]  bus_add_driver+0xec/0x218
+<span class="o">[</span>10710.757216]  driver_register+0x68/0x138
+<span class="o">[</span>10710.757229]  i2c_register_driver+0x50/0xd8
+<span class="o">[</span>10710.757243]  ssd1306_drv_init+0x60/0xff8 <span class="o">[</span>drm_ssd130x]
+<span class="o">[</span>10710.757269]  do_one_initcall+0x60/0x2c0
+<span class="o">[</span>10710.757281]  do_init_module+0x60/0x218
+<span class="o">[</span>10710.757298]  load_module+0x1dd0/0x2080
+<span class="o">[</span>10710.757313]  init_module_from_file+0x8c/0xd8
+<span class="o">[</span>10710.757329]  __arm64_sys_finit_module+0x150/0x330
+<span class="o">[</span>10710.757344]  invoke_syscall+0x50/0x128
+<span class="o">[</span>10710.757362]  el0_svc_common.constprop.0+0x48/0xf0
+<span class="o">[</span>10710.757378]  do_el0_svc+0x24/0x38
+<span class="o">[</span>10710.757394]  el0_svc+0x40/0xe8
+<span class="o">[</span>10710.757413]  el0t_64_sync_handler+0x100/0x130
+<span class="o">[</span>10710.757423]  el0t_64_sync+0x190/0x198
+<span class="o">[</span>10710.757434] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
+</code></pre></div></div>
+
+<p>检查kernel代码，validate_encoder_possible_crtcs()函数会检查encoder中的possible_crtcs的配置情况：</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">static</span> <span class="kt">void</span> <span class="nf">validate_encoder_possible_crtcs</span><span class="p">(</span><span class="k">struct</span> <span class="n">drm_encoder</span> <span class="o">*</span><span class="n">encoder</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">u32</span> <span class="n">crtc_mask</span> <span class="o">=</span> <span class="n">full_crtc_mask</span><span class="p">(</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">);</span>
+
+	<span class="n">WARN</span><span class="p">((</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">&amp;</span> <span class="n">crtc_mask</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">||</span>
+	     <span class="p">(</span><span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">crtc_mask</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">,</span>
+	     <span class="s">"Bogus possible_crtcs: "</span>
+	     <span class="s">"[ENCODER:%d:%s] possible_crtcs=0x%x (full crtc mask=0x%x)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+	     <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">base</span><span class="p">.</span><span class="n">id</span><span class="p">,</span> <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span>
+	     <span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span><span class="p">,</span> <span class="n">crtc_mask</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// 在modeconfig初始化中加入如下</span>
+<span class="n">encoder</span><span class="o">-&gt;</span><span class="n">possible_crtcs</span> <span class="o">=</span> <span class="n">drm_crtc_mask</span><span class="p">(</span><span class="n">crtc</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h2 id="0x04-在rpi4b驱动ssd1306led">0x04 在RPI4B驱动ssd1306LED</h2>
+
+<p>问题</p>
+
+<p>connector报错没有添加mode和fb，但是已经添加了fb和mode：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span> 3035.282877] <span class="o">[</span>drm:drm_mode_setcrtc <span class="o">[</span>drm]] Count connectors is 1 but no mode or fb <span class="nb">set</span>
+</code></pre></div></div>
+
+<p>检查发现使用drm_add_modes_noedid并没有成功，count应该返回添加了几个mode，实际count返回0，没有添加上。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">count</span> <span class="o">=</span> <span class="n">drm_add_modes_noedid</span><span class="p">(</span><span class="n">connector</span><span class="p">,</span> <span class="n">WIDTH</span><span class="p">,</span> <span class="n">HEIGHT</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h3 id="上板调试问题">上板调试问题</h3>
+
+<ul>
+  <li>（1）调用drm_mode_setcrtc后发生trap</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>13841.124867] Call trace:
+<span class="o">[</span>13841.124881]  drm_crtc_check_viewport+0x68/0xe0 <span class="o">[</span>drm]
+<span class="o">[</span>13841.125096]  drm_mode_setcrtc+0x210/0x6c0 <span class="o">[</span>drm]
+<span class="o">[</span>13841.125309]  drm_ioctl_kernel+0xd8/0x190 <span class="o">[</span>drm]
+<span class="o">[</span>13841.125523]  drm_ioctl+0x220/0x4c0 <span class="o">[</span>drm]
+<span class="o">[</span>13841.125735]  __arm64_sys_ioctl+0xb4/0x100
+<span class="o">[</span>13841.125768]  invoke_syscall+0x50/0x128
+<span class="o">[</span>13841.125794]  el0_svc_common.constprop.0+0x48/0xf0
+<span class="o">[</span>13841.125819]  do_el0_svc+0x24/0x38
+<span class="o">[</span>13841.125841]  el0_svc+0x40/0xe8
+<span class="o">[</span>13841.125867]  el0t_64_sync_handler+0x100/0x130
+<span class="o">[</span>13841.125886]  el0t_64_sync+0x190/0x198
+<span class="o">[</span>13841.125909] Code: f9404261 52800140 29460fe2 f9412c21 <span class="o">(</span>b9404421<span class="o">)</span> 
+<span class="o">[</span>13841.125931] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
+</code></pre></div></div>
+
+<p>经分析crtc-&gt;primary-&gt;state-&gt;rotation解引用到空指针，其中crtc-&gt;primary是一个plane，state没有初始化</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// 内核代码
+<span class="k">if</span> <span class="o">(</span>crtc-&gt;state <span class="o">&amp;&amp;</span>
+	    drm_rotation_90_or_270<span class="o">(</span>crtc-&gt;primary-&gt;state-&gt;rotation<span class="o">))</span>
+		swap<span class="o">(</span>hdisplay, vdisplay<span class="o">)</span><span class="p">;</span>
+		
+// 驱动代码中没有加入reset函数 修改后如下
+static struct drm_plane_funcs ssd130x_plane_funcs <span class="o">=</span> <span class="o">{</span>                                                                               273     .update_plane <span class="o">=</span> drm_atomic_helper_update_plane,
+    .disable_plane <span class="o">=</span> drm_atomic_helper_disable_plane,
+    .destroy <span class="o">=</span> drm_plane_cleanup,
+    .atomic_destroy_state <span class="o">=</span> drm_atomic_helper_plane_destroy_state,
+    .atomic_duplicate_state <span class="o">=</span> drm_atomic_helper_plane_duplicate_state,
+    .reset <span class="o">=</span> drm_atomic_helper_plane_reset,
+<span class="o">}</span><span class="p">;</span>  
+</code></pre></div></div>
+
+<ul>
+  <li>（2）依旧是调用drm_mode_setcrtc后发生trap</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>   91.792200] CPU: 2 PID: 740 Comm: test_drm Tainted: G         C O       6.6.51+rpt-rpi-v8 <span class="c">#1  Debian 1:6.6.51-1+rpt3</span>
+<span class="o">[</span>   91.792232] Hardware name: Raspberry Pi 4 Model B Rev 1.5 <span class="o">(</span>DT<span class="o">)</span>
+<span class="o">[</span>   91.792249] pstate: 60000005 <span class="o">(</span>nZCv daif <span class="nt">-PAN</span> <span class="nt">-UAO</span> <span class="nt">-TCO</span> <span class="nt">-DIT</span> <span class="nt">-SSBS</span> <span class="nv">BTYPE</span><span class="o">=</span><span class="nt">--</span><span class="o">)</span>
+<span class="o">[</span>   91.792271] pc : 0x0
+<span class="o">[</span>   91.792293] lr : drm_mode_setcrtc+0x434/0x6c0 <span class="o">[</span>drm]
+<span class="o">[</span>   91.792546] sp : ffffffc080f63b40
+<span class="o">[</span>   91.792559] x29: ffffffc080f63b40 x28: 000000000000001f x27: ffffff80455ad800
+<span class="o">[</span>   91.792595] x26: 0000000000000001 x25: ffffff8042b04648 x24: 0000000000000001
+<span class="o">[</span>   91.792628] x23: ffffff804251f900 x22: ffffff804102ae80 x21: ffffff80455ad800
+<span class="o">[</span>   91.792660] x20: ffffffc080f63d48 x19: ffffff8042b04010 x18: 0000000000000000
+<span class="o">[</span>   91.792692] x17: 0000000000000000 x16: ffffffeeb6b04440 x15: 0000000000000000
+<span class="o">[</span>   91.792724] x14: 0000000000000000 x13: 0048000000000048 x12: 0044004200480040
+<span class="o">[</span>   91.792756] x11: 0000000000000040 x10: ffffff8042b04208 x9 : ffffffee9c8daa94
+<span class="o">[</span>   91.792788] x8 : ffffffee9c910000 x7 : 0000000000000000 x6 : 0000000000000000
+<span class="o">[</span>   91.792819] x5 : 0000000000000000 x4 : ffffff8042b04bf0 x3 : 00000000ffffffff
+<span class="o">[</span>   91.792850] x2 : 0000000000000000 x1 : ffffffc080f63c08 x0 : ffffffc080f63bd8
+<span class="o">[</span>   91.792881] Call trace:
+<span class="o">[</span>   91.792895]  0x0
+<span class="o">[</span>   91.792911]  drm_ioctl_kernel+0xd8/0x190 <span class="o">[</span>drm]
+<span class="o">[</span>   91.793134]  drm_ioctl+0x220/0x4c0 <span class="o">[</span>drm]
+<span class="o">[</span>   91.793350]  __arm64_sys_ioctl+0xb4/0x100
+<span class="o">[</span>   91.793384]  invoke_syscall+0x50/0x128
+<span class="o">[</span>   91.793410]  el0_svc_common.constprop.0+0x48/0xf0
+<span class="o">[</span>   91.793435]  do_el0_svc+0x24/0x38
+<span class="o">[</span>   91.793459]  el0_svc+0x40/0xe8
+<span class="o">[</span>   91.793486]  el0t_64_sync_handler+0x100/0x130
+<span class="o">[</span>   91.793504]  el0t_64_sync+0x190/0x198
+<span class="o">[</span>   91.793535] Code: ???????? ???????? ???????? ???????? <span class="o">(</span>????????<span class="o">)</span> 
+<span class="o">[</span>   91.793557] <span class="nt">---</span><span class="o">[</span> end trace 0000000000000000 <span class="o">]</span><span class="nt">---</span>
+</code></pre></div></div>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// 内核代码调用crtc-&gt;funcs-&gt;set_config</span>
+<span class="c1">// set_config没有设置</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">drm_drv_uses_atomic_modeset</span><span class="p">(</span><span class="n">dev</span><span class="p">))</span>
+		<span class="n">ret</span> <span class="o">=</span> <span class="n">crtc</span><span class="o">-&gt;</span><span class="n">funcs</span><span class="o">-&gt;</span><span class="n">set_config</span><span class="p">(</span><span class="o">&amp;</span><span class="n">set</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">ctx</span><span class="p">);</span>
+
+<span class="c1">// 驱动代码添加set_config</span>
+<span class="k">static</span> <span class="k">struct</span> <span class="n">drm_crtc_funcs</span> <span class="n">ssd130x_crtc_funcs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="p">.</span><span class="n">reset</span> <span class="o">=</span> <span class="n">drm_atomic_helper_crtc_reset</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">destroy</span> <span class="o">=</span> <span class="n">drm_crtc_cleanup</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">atomic_duplicate_state</span> <span class="o">=</span> <span class="n">drm_atomic_helper_crtc_duplicate_state</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">atomic_destroy_state</span> <span class="o">=</span> <span class="n">drm_atomic_helper_crtc_destroy_state</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">set_config</span> <span class="o">=</span> <span class="n">drm_atomic_helper_set_config</span><span class="p">,</span>                                                           
+<span class="p">};</span>
 </code></pre></div></div>
 
 <p>https://crab2313.github.io/post/drm-legacy-kms/</p>
