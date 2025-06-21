@@ -20,6 +20,8 @@ theme_config:
   show_description: false # show blog description in home page
   lowercase_titles: false # show titles in lowercase in lists
 
+markdown: kramdown
+
 sass:
   style: compressed
 

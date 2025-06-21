@@ -76,6 +76,10 @@ GEM
       rb-inotify (~> 0.9, >= 0.9.10)
     logger (1.6.6)
     mercenary (0.3.6)
+    minima (2.5.2)
+      jekyll (>= 3.5, < 5.0)
+      jekyll-feed (~> 0.9)
+      jekyll-seo-tag (~> 2.1)
     pathutil (0.16.2)
       forwardable-extended (~> 2.6)
     public_suffix (6.0.1)
@@ -109,8 +113,10 @@ DEPENDENCIES
   base64
   bigdecimal
   csv
+  jekyll
   kramdown-parser-gfm
   logger
+  minima
   no-style-please!
   webrick
 

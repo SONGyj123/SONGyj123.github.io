@@ -568,17 +568,13 @@ drm_gem_object很大一块，如果可以通过一个数字一样的index和drm_
 
 - [ ] todo
 
-### dma-buf
+### 5. dma-buf
+
+dma-buf是一种共享机制，主要为了解决不同驱动之间buffer共享问题，在显示pipeline中，一块显示的buffer会经过多个模块的处理最后才能显示出来。
+
+
 
 dma-buf在内核空间和用户空间中的表显形式不一样，在用户空间中是一个**fd**，在内核中是**struct dma_buf**
-
-> struct dma_buf - shared buffer object
->
-> This represents a shared buffer, created by calling dma_buf_export(). The userspace representation is a normal file descriptor, which can be created by calling dma_buf_fd().
->
-> Shared dma buffers are reference counted using dma_buf_put() and get_dma_buf().
->
-> Device DMA access is handled by the separate &struct dma_buf_attachment.
 
 - No standardised memory allocation: It’s up to the exporter; 
 - An arbitrary buffer can be wrapped into a DMA buffer; 
@@ -618,7 +614,9 @@ return heap_data.fd;
 
 
 
+##### dma-buf heap（dmaheap）
 
+作为分配能够申请分配dma-buf的驱动向用户空间提供接口，实际就是一个exporter驱动。
 
 [dma-buf](https://www.youtube.com/watch?v=UsEVoWD_o0c)
 
