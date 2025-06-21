@@ -14,8 +14,6 @@ gem "jekyll"
 gem 'jekyll-feed'
 gem 'webrick'
 
-gemspec
-
 gem "jekyll-readme-index", "~> 0.3.0"
 
 gem "jemoji", "~> 0.13.0"

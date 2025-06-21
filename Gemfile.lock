@@ -1,12 +1,3 @@
-PATH
-  remote: .
-  specs:
-    no-style-please (0.4.9)
-      jektex (~> 0.1.1)
-      jekyll (~> 3.10.0)
-      jekyll-feed (~> 0.17.0)
-      jekyll-seo-tag (~> 2.8.0)
-
 GEM
   remote: https://rubygems.org/
   specs:
@@ -32,13 +23,11 @@ GEM
     concurrent-ruby (1.3.5)
     connection_pool (2.5.3)
     csv (3.3.2)
-    digest (3.1.1)
     drb (2.2.3)
     em-websocket (0.5.3)
       eventmachine (>= 0.12.9)
       http_parser.rb (~> 0)
     eventmachine (1.2.7)
-    execjs (2.10.0)
     ffi (1.17.1)
     ffi (1.17.1-aarch64-linux-gnu)
     ffi (1.17.1-aarch64-linux-musl)
@@ -55,14 +44,9 @@ GEM
     html-pipeline (2.14.3)
       activesupport (>= 2)
       nokogiri (>= 1.4)
-    htmlentities (4.3.4)
     http_parser.rb (0.8.0)
     i18n (1.14.7)
       concurrent-ruby (~> 1.0)
-    jektex (0.1.1)
-      digest (~> 3.1.1, >= 3.1.1)
-      execjs (~> 2.1, >= 2.9.1)
-      htmlentities (~> 4.3, >= 4.3.4)
     jekyll (3.10.0)
       addressable (~> 2.4)
       colorator (~> 1.0)
@@ -172,7 +156,6 @@ DEPENDENCIES
   kramdown-parser-gfm
   logger
   minima
-  no-style-please!
   webrick
 
 BUNDLED WITH
