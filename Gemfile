@@ -13,6 +13,7 @@ gem "minima"
 gem "jekyll"
 gem 'jekyll-feed'
 gem 'webrick'
+gem 'jektex'
 
 gem "jekyll-readme-index", "~> 0.3.0"
 

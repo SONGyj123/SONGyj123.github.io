@@ -1,60 +1,134 @@
-<!DOCTYPE html>
-<html lang="en"><head>
-  <meta charset="utf-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<h1 id="no-style-please">no style, please!</h1>
 
-  <title>About</title>
+<p><a href="https://badge.fury.io/rb/no-style-please"><img src="https://badge.fury.io/rb/no-style-please.svg" alt="Gem Version" /></a></p>
 
-  <link type="application/atom+xml" rel="alternate" href="https://songyj123.github.io/feed.xml" title="SONGyj123" /><link rel="shortcut icon" type="image/x-icon" href="/logo.png" />
-  <link rel="stylesheet" href="/assets/css/main.css" />
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.css" integrity="sha384-OH8qNTHoMMVNVcKdKewlipV4SErXqccxxlg6HC9Cwjr5oZu2AdBej1TndeCirael" crossorigin="anonymous">
+<p><img src="https://raw.githubusercontent.com/riggraz/no-style-please/master/logo.png" width="64" align="left" />A (nearly) no-CSS, fast, minimalist <a href="https://jekyllrb.com/">Jekyll</a> theme.
+Inspired by <a href="http://tilde.town/~elly/">elly’s site</a>, expressly created for <a href="https://riggraz.dev/">my personal blog</a>.</p>
 
-</head>
-<body a="light">
-    <main class="page-content" aria-label="Content">
-      <div class="w">
-        <header>
-  <h1>SONGyj123</h1></header><ul><li>All Posts</li><ul><li>
-          <span>2025-04-19</span>
-          
-          <a href="/rpi-4b.html">Rpi_4b</a>
-          
-        </li><li>
-          <span>2025-04-05</span>
-          
-          <a href="/linux-driver.html">Linux_driver</a>
-          
-        </li><li>
-          <span>2025-03-31</span>
-          
-          <a href="/cortex-m-note.html">Cortex_m_note</a>
-          
-        </li><li>
-          <span>2025-01-01</span>
-          
-          <a href="/linux-graphic-stack.html">Linux_graphic_stack</a>
-          
-        </li><li>
-          <span>2023-11-08</span>
-          
-          <a href="/rk3588-baremetal.html">Rk3588_baremetal</a>
-          
-        </li><li>
-          <span>2023-05-01</span>
-          
-          <a href="/riscv-xv6.html">Riscv_xv6</a>
-          
-        </li></ul><li><a href="about">About</a></li></ul>
+<h3 align="center"><a href="https://riggraz.dev/no-style-please/">Try the demo out!</a></h3>
 
-      </div>
-    </main>
+<p><img src="https://raw.githubusercontent.com/riggraz/no-style-please/master/_screenshots/featured-image.png" /></p>
 
-    <!-- 添加页脚 -->
-    <footer class="w">
-      <p>
-        Theme by <a href="https://github.com/riggraz/no-style-please" target="_blank">no-style-please</a>.
-      </p>
-    </footer>
-  </body>
-</html>
+<h2 id="features">Features</h2>
+
+<ul>
+  <li>Fast (<strong>1kb of CSS!</strong> For more information on performance and more, see <a href="https://raw.githubusercontent.com/riggraz/no-style-please/master/_screenshots/page-speed-insights-report.png">Page Speed Insights report</a> and <a href="https://raw.githubusercontent.com/riggraz/no-style-please/master/_screenshots/lighthouse-report.png">Lighthouse report</a>)</li>
+  <li>Light, dark and auto modes</li>
+  <li>Responsive</li>
+  <li>Content first (typography optimized for maximum readability)</li>
+  <li>SEO optimized (uses <a href="https://github.com/jekyll/jekyll-seo-tag">Jekyll SEO Tag</a>)</li>
+  <li>RSS feed (uses <a href="https://github.com/jekyll/jekyll-feed">Jekyll Feed</a>)</li>
+  <li>Fully compatible with <a href="https://pages.github.com/">GitHub Pages</a> (see <a href="#github-pages-installation">GitHub Pages installation</a>)</li>
+</ul>
+
+<h2 id="installation">Installation</h2>
+
+<p>If you haven’t already created your blog using Jekyll, follow the <a href="https://jekyllrb.com/docs/">instructions</a> to do so from Jekyll’s documentation.</p>
+
+<p>NOTE: if you are using Jekyll with GitHub Pages, see the <a href="#github-pages-installation">GitHub Pages installation section</a>.</p>
+
+<p>Then, to style your blog with this theme, add this line to your Jekyll site’s <code class="language-plaintext highlighter-rouge">Gemfile</code>:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">gem</span> <span class="s2">"no-style-please"</span>
+</code></pre></div></div>
+
+<p>And add this line to your Jekyll site’s <code class="language-plaintext highlighter-rouge">_config.yml</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">theme</span><span class="pi">:</span> <span class="s">no-style-please</span>
+</code></pre></div></div>
+
+<p>And then execute:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ bundle
+</code></pre></div></div>
+
+<p>Or install it yourself as:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ gem install no-style-please
+</code></pre></div></div>
+
+<h3 id="github-pages-installation">GitHub Pages installation</h3>
+
+<p>If you want to use this theme for your Jekyll’s site deployed on <a href="https://pages.github.com/">GitHub Pages</a>, follow the instructions on <a href="https://docs.github.com/en/github/working-with-github-pages/adding-a-theme-to-your-github-pages-site-using-jekyll#adding-a-theme">this page</a>.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>You can edit <code class="language-plaintext highlighter-rouge">_config.yml</code> file to customize your blog. You can change things such as the name of the blog, the author, the appearance of the theme (light, dark or auto), how dates are formatted, etc. Customizable fields should be straightforward to understand. Still, <code class="language-plaintext highlighter-rouge">_config.yml</code> contains some comments to help you understand what each field does.</p>
+
+<p>For further customization (e.g. layout, CSS) see the <a href="https://jekyllrb.com/docs/themes/#overriding-theme-defaults">official Jekyll’s documentation</a> on customizing gem-based themes.</p>
+
+<h3 id="customize-the-menu">Customize the menu</h3>
+
+<p>In order to add/edit/delete entries from the main menu, you have to edit the <code class="language-plaintext highlighter-rouge">menu.yml</code> file inside <code class="language-plaintext highlighter-rouge">_data</code> folder. Through that file you can define the structure of the menu. Take a look at the default configuration to get an idea of how it works and read on for a more comprehensive explanation.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">menu.yml</code> file accepts the following fields:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">entries</code> define a new unordered list that will contain menu entries</li>
+  <li>each entry is marked by a <code class="language-plaintext highlighter-rouge">-</code> at the beginning of the line</li>
+  <li>each entry can have the following attributes:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">title</code>, which defines the text to render for this menu entry (<strong>NB: you can also specify HTML!</strong>)</li>
+      <li><code class="language-plaintext highlighter-rouge">url</code>, which can be used to specify an URL for this entry. If not specified, <code class="language-plaintext highlighter-rouge">title</code> will be rendered as-is; otherwise <code class="language-plaintext highlighter-rouge">title</code> will be sorrounded by a link tag pointing to the specified URL. Note that the URL can either be relative or absolute. Also note that you can get the same result by placing an <code class="language-plaintext highlighter-rouge">&lt;a&gt;</code> tag in the <code class="language-plaintext highlighter-rouge">title</code> field.</li>
+      <li><code class="language-plaintext highlighter-rouge">post_list</code>, which can be set either to <code class="language-plaintext highlighter-rouge">true</code> or to an object. If it is true, the entry will have a list of all posts as subentries. This is used to render your post list. If you want to customize which posts to render (e.g. by category), you can add one or more of the following attributes under <code class="language-plaintext highlighter-rouge">post_list</code>:
+        <ul>
+          <li><code class="language-plaintext highlighter-rouge">category</code>, which can be set to a string. It is used to render a list of posts of the specified category only. If you don’t set it, then posts of all categories will be rendered.</li>
+          <li><code class="language-plaintext highlighter-rouge">limit</code>, which can be set to a number. It specifies the number of posts to show. If not set, all posts will be rendered.</li>
+          <li><code class="language-plaintext highlighter-rouge">show_more</code>, which can be true. If it is true and if the number of posts to show is greater than the specified <code class="language-plaintext highlighter-rouge">limit</code>, render a link to another page. To specify the URL and the text of the link, you can set <code class="language-plaintext highlighter-rouge">show_more_url</code> and <code class="language-plaintext highlighter-rouge">show_more_text</code> attributes, which are documented below.</li>
+          <li><code class="language-plaintext highlighter-rouge">show_more_url</code>, which can be a string. It specifies the URL for the show more link. Use only if <code class="language-plaintext highlighter-rouge">show_more</code> is true. This will usually redirect to a page containing all posts, which you can easily create using an archive page (see <a href="#create-archive-pages">create archive pages</a> section)</li>
+          <li><code class="language-plaintext highlighter-rouge">show_more_text</code>, which can be a string. It specifies the text for the show more link. Use only if <code class="language-plaintext highlighter-rouge">show_more</code> is true.</li>
+        </ul>
+      </li>
+      <li><code class="language-plaintext highlighter-rouge">entries</code>, yes, you can have entries inside entries. In this way you can create nested sublists!</li>
+    </ul>
+  </li>
+</ul>
+
+<h3 id="create-archive-pages">Create archive pages</h3>
+
+<p>A so-called archive page is a page that shows a list of posts (see <a href="https://riggraz.dev/no-style-please/all-posts">this</a> for an example). You can create an archive page by creating a page and putting the following frontmatter:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>---
+layout: archive
+title: The title of the page here
+which_category: name-of-category
+---
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">which_category</code> is optional: if you don’t put it, then all posts of the blog will be listed; on the other hand, if you specify a category, only posts of that category will be shown.</p>
+
+<p>This feature is particularly useful if used together with the <code class="language-plaintext highlighter-rouge">show_more</code> attribute in the menu. For example, if you want to limit the number of posts shown in the home page to 5 but add a link to view them all, then you can create an archive page using the method showed above and link to it using the <code class="language-plaintext highlighter-rouge">show_more_url</code> attribute in <code class="language-plaintext highlighter-rouge">menu.yml</code>. See <a href="https://github.com/riggraz/no-style-please/blob/master/_data/menu.yml">this example</a> if you’re in doubt.</p>
+
+<h3 id="customize-the-index-page">Customize the index page</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">index.md</code> page should use layout <code class="language-plaintext highlighter-rouge">home</code>, which is the layout that displays the menu. If you want to have some content after the menu, you can just add that content in the <code class="language-plaintext highlighter-rouge">index.md</code> file, and it will automatically show under the menu.</p>
+
+<p>Another thing you can do to customize the index page is show the description of your blog between the title and the menu. To do this, just edit <code class="language-plaintext highlighter-rouge">_config.yml</code> and change <code class="language-plaintext highlighter-rouge">theme_config.show_description</code> to <code class="language-plaintext highlighter-rouge">true</code>.</p>
+
+<h3 id="pro-tips">Pro tips</h3>
+
+<h4 id="dark-mode-for-images">Dark mode for images</h4>
+
+<p>This theme provides dark mode by inverting all colors of light mode throught the CSS <code class="language-plaintext highlighter-rouge">invert()</code> function. This approach would also invert the color of all images, but, since this is not the behaviour one would expect, images are not inverted by default.</p>
+
+<p>However, if you would like to force the color inversion on a specific image you can do so by applying <code class="language-plaintext highlighter-rouge">class="ioda"</code> to that image (“ioda” stands for “invert on dark appearance”). See the image in the <a href="https://github.com/riggraz/no-style-please/blob/master/_posts/2020-07-07-overview-post.md">overview post</a> for an example of this approach. Note that color inversion will take place only when the theme has dark appearance!</p>
+
+<p>For example, if you have a black and white image it could make sense to invert it in dark mode. On the other hand, a colorful image will probably look bad if inverted.</p>
+
+<h2 id="contributing">Contributing</h2>
+
+<p>Bug reports and pull requests are welcome on GitHub at https://github.com/riggraz/no-style-please. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the <a href="http://contributor-covenant.org">Contributor Covenant</a> code of conduct.</p>
+
+<h2 id="development">Development</h2>
+
+<p>To set up your environment to develop this theme, run <code class="language-plaintext highlighter-rouge">bundle install</code>.</p>
+
+<p>Your theme is setup just like a normal Jekyll site! To test your theme, run <code class="language-plaintext highlighter-rouge">bundle exec jekyll serve</code> and open your browser at <code class="language-plaintext highlighter-rouge">http://localhost:4000</code>. This starts a Jekyll server using your theme. Add pages, documents, data, etc. like normal to test your theme’s contents. As you make modifications to your theme and to your content, your site will regenerate and you should see the changes in the browser after a refresh, just like normal.</p>
+
+<p>When your theme is released, only the files in <code class="language-plaintext highlighter-rouge">_layouts</code>, <code class="language-plaintext highlighter-rouge">_includes</code>, <code class="language-plaintext highlighter-rouge">_sass</code> and <code class="language-plaintext highlighter-rouge">assets</code> tracked with Git will be bundled.
+To add a custom directory to your theme-gem, please edit the regexp in <code class="language-plaintext highlighter-rouge">no-style-please.gemspec</code> accordingly.</p>
+
+<h2 id="license">License</h2>
+
+<p>The theme is available as open source under the terms of the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+
