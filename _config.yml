@@ -31,6 +31,9 @@ remote_theme: sighingnow/jekyll-gitbook
 toc:
     enabled: true
 
+markdown: kramdown
+highlighter: rouge
+
 # Build settings
 theme: minima
 plugins:
