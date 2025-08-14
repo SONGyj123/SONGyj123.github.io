@@ -33,6 +33,8 @@ toc:
 
 markdown: kramdown
 highlighter: rouge
+rouge:
+  theme: github
 
 # Build settings
 theme: minima
