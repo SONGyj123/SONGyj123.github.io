@@ -45,7 +45,9 @@ int main(int /*argc*/, char* argv[]) {
 
 composer中的接口很少，实际的操作都放在了composerclient中去实现，sf中获取到composer指针之后立即通过**createClient**方法创建出ComposerClient为后续操作做准备。
 
-通俗来说，Composer 像是“前台接待”，帮你建立一个会话，ComposerClient 像是“专属客服”，提供具体服务。
+- SurfaceFlinger 是“客户”
+- Composer 是“前台接待”，帮你建立一个会话
+- ComposerClient 是“专属客服”，提供具体服务。
 
 ```c
 // drm_hwcomposer/hwc3/Composer.h
@@ -70,7 +72,7 @@ class Composer : public BnComposer {
 
 ### 2. ComposerClient
 
-ComposerClient中提供了一大堆服务
+ComposerClient中提供了一大堆服务，主要看Init()和executeCommands()，其他都是大量获取特性的get函数。
 
 ```c++
 class ComposerClient : public BnComposerClient {
@@ -139,6 +141,84 @@ class ComposerClient : public BnComposerClient {
 ```
 
 ## 0x03 HWC Init
+
+- service添加composer服务到binder
+
+  ```
+  auto status = AServiceManager_addService(composer->asBinder().get(), instance.c_str());
+  ```
+
+  - composer->createclient()   SF获取到composer服务后，调用createclient创建composerclient，获取到composerclient指针进而远程调用相关接口
+
+    - client->Init()    初始化composerclient
+
+      - 创建一个DrmHwcThree实例
+
+        ```c++
+        void ComposerClient::Init() {
+          DEBUG_FUNC();
+          hwc_ = std::make_unique<DrmHwcThree>();
+        }
+        ```
+
+  - ComposerClient->registerCallback()   注册hotplug回调函数
+
+    - hwc_->Init(callback)   初始化DrmHwcThree实例
+
+      - ResourceManager->Init()
+
+        - DrmDevice::CreateInstance("/dev/dri/card%", this, 0)   根据drm节点路径打开drm设备
+
+          - 设置drm的capability
+          - 获取moderesources
+          - 根据res获取CONN ENC CRTC PLANE
+
+        - 注册回调函数
+
+          ```c++
+          uevent_listener_->RegisterHotplugHandler([this] {
+            const std::unique_lock lock(GetMainLock());
+            UpdateFrontendDisplays();
+          });
+          ```
+
+        - **UpdateFrontendDisplays()   更新Mode 创建pipeline 创建display 后面展开说**
+
+
+
+- UpdateFrontendDisplays() 
+
+  - GetOrderedConnectors()   获取当前的connector
+
+    - conn->UpdateModes()   for循环中给每个conn更新显示mode
+
+    - 判断当前conn的状态是否**DRM_MODE_CONNECTED**以及conn和pipeline配对状态
+
+      - 如果**DRM_MODE_CONNECTED**且未配对，创建pipeline
+
+        - DrmDisplayPipeline->CreatePipeline(*conn) 
+
+        - BindDisplay(pipeline)   创建display并绑定到pipeline
+        - attached_pipelines_[conn] = std::move(pipeline)   添加当前conn-pipeline配对
+
+      - 如果**DRM_MODE_UNCONNECTED**，表示屏幕移除的情况
+        - UnbindDisplay(pipeline)
+        - attached_pipelines_.erase(conn)   移除当前conn-pipeline配对
+
+    - FinalizeDisplayBinding()   创建display并SetPipeline
+
+      - displays_[kPrimaryDisplay] = std::make_unique<HwcDisplay>(kPrimaryDisplay, HWC2::DisplayType::Physical, this)   创建display实例
+      - displays_[kPrimaryDisplay]->SetPipeline({})   
+        - HwcDisplay->Init()   初始化display
+          - ChosePreferredConfig()   显示mode生成
+            - 非headless模式   直接Update()将conn的mode获取到
+            - headless模式（用于适配没有屏幕，android系统必须要一个primary屏幕否则重启，使用headless当一个物理屏幕都没有时用于欺骗SF防止重启）**GenFakeMode**(0, 0)
+            - SetActiveConfig(configs_.**preferred_config_id**)   选择最优显示mode，保存下最优的condig_id
+      - SendHotplugEventToClient(dhe.first, dhe.second)   发送热插拔事件给SF
+
+      
+
+## 0x04 SF和HWC交互
 
 
 
