@@ -241,6 +241,8 @@ presentdisplay是不带test flag的atomic_commit
   - headlessmode直接返回
   - HwcDisplay::CreateComposition(AtomicCommitArgs &a_args)同上
 
+![HWC](_pics/HWC.png)
+
 ## 0x05 Q&A
 
 1. **为什么 GPU 合成 (Client Composition) 最终只有一个 ClientLayer？**SurfaceFlinger 只会把合成好的这一个 Framebuffer 交回给 HWC，对 HWC 来说，不需要知道 GPU 合成内部有几个 Layer。随后这个返回的layer会和其他的硬件合成layer一起合成，这个clientlayer也会占用一个plane
