@@ -167,7 +167,7 @@ class ComposerClient : public BnComposerClient {
 
       - ResourceManager->Init()
 
-        - DrmDevice::CreateInstance("/dev/dri/card%", this, 0)   根据drm节点路径打开drm设备
+        - DrmDevice::CreateInstance("/dev/dri/card%", this, 0)   根据drm节点路径打开drm设备 初始化drm设备
 
           - 设置drm的capability
           - 获取moderesources
@@ -182,9 +182,9 @@ class ComposerClient : public BnComposerClient {
           });
           ```
 
-        - **UpdateFrontendDisplays()   更新Mode 创建pipeline 创建display 后面展开说**
+        - 执行一次函数**UpdateFrontendDisplays()   更新Mode 创建pipeline 创建display 后面展开说**
 
-
+UpdateFrontendDisplays作为hotplug回调函数在检测到热插拔时间后会进行调用，当HWC第一次初始化时也会调用一次，用于初始化显示pipeline。
 
 - UpdateFrontendDisplays() 
 
@@ -216,11 +216,35 @@ class ComposerClient : public BnComposerClient {
             - SetActiveConfig(configs_.**preferred_config_id**)   选择最优显示mode，保存下最优的condig_id
       - SendHotplugEventToClient(dhe.first, dhe.second)   发送热插拔事件给SF
 
-      
+上述工作完成后，理论上display pipeline已经通了，随后可以开始合成送显工作。
 
-## 0x04 SF和HWC交互
+## 0x04 validatedisplay&presentdisplay
 
+validatedisplay是一次带有test flag的atomic_commit，drm驱动识别到testflag之后并不会真的开始合成，而是返回是否可以合成的结果。因为硬件plane对于layer的合成能力不同，有的layer的特性plane可能并不支持，这时候需要将这个layer标记为GPU合成。
 
+- display->ValidateStagedComposition()
+  - headlessmode直接返回
+  - backend_->ValidateDisplay(this, &num_types, &num_requests)
+  - 判断是否需要进行validatedisplay操作 **testing_needed** = client_start != 0 || client_size != layers.size() 如何理解这个条件呢？ client_start == 0 && client_size == layers.size() 当所有的layer都被SF标记为client合成（GPU）时，不需要进行测试。换言之，只要有DPU硬件合成就需要进行测试
+    - HwcDisplay::CreateComposition(AtomicCommitArgs &a_args)
+      - 按z_order将layer排序，client_layer的zorder按照最小的client合成layer确定
+      - import&populate 在此之前的layer没有实际的表示内容的那块内存，这一步通过importor将buffer_handle与layer绑定
+      - DrmKmsPlan->CreateDrmKmsPlan   创建一个plan 所谓plan就是 **layer和plane的对应关系**
+      - DrmAtomicStateManager->ExecuteAtomicCommit()
+        - CommitFrame
+          - 解析args入参，drmModeAtomicAddProperty添加
+          - drmModeAtomicCommit(*drm->GetFd(), pset.get(), flags | **DRM_MODE_ATOMIC_TEST_ONLY**, drm);
+
+presentdisplay是不带test flag的atomic_commit
+
+- display->PresentStagedComposition()
+  - headlessmode直接返回
+  - HwcDisplay::CreateComposition(AtomicCommitArgs &a_args)同上
+
+## 0x05 Q&A
+
+1. **为什么 GPU 合成 (Client Composition) 最终只有一个 ClientLayer？**SurfaceFlinger 只会把合成好的这一个 Framebuffer 交回给 HWC，对 HWC 来说，不需要知道 GPU 合成内部有几个 Layer。随后这个返回的layer会和其他的硬件合成layer一起合成，这个clientlayer也会占用一个plane
+2. **backend_是什么？**
 
 ## 0x00 Reference
 
