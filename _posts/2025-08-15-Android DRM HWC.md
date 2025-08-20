@@ -243,6 +243,118 @@ presentdisplay是不带test flag的atomic_commit
 
 ![HWC](_pics/HWC.png)
 
+## 0x05 layer-plane对应关系
+
+在确定好layer的合成方式之后，还需要确定出layer和plane的对应关系。逻辑比较简单，将需要合成的layer一个一个拿出来和plane进行对比，查看plane是否支持layer中的特性。比如rotation alpha blending format等
+
+```cpp
+auto DrmKmsPlan::CreateDrmKmsPlan(DrmDisplayPipeline &pipe,
+                                  std::vector<LayerData> composition)
+    -> std::unique_ptr<DrmKmsPlan> {
+  auto plan = std::make_unique<DrmKmsPlan>();
+
+  auto avail_planes = pipe.GetUsablePlanes();
+
+  int z_pos = 0;
+  for (auto &dhl : composition) {
+    std::shared_ptr<BindingOwner<DrmPlane>> plane;
+
+    /* Skip unsupported planes */
+    do {
+      if (avail_planes.empty()) {
+        return {};
+      }
+
+      plane = *avail_planes.begin();
+      avail_planes.erase(avail_planes.begin());
+    } while (!plane->Get()->IsValidForLayer(&dhl));
+
+    LayerToPlaneJoining joining = {
+        .layer = std::move(dhl),
+        .plane = plane,
+        .z_pos = z_pos++,
+    };
+
+    plan->plan.emplace_back(std::move(joining));
+  }
+
+  return plan;
+}
+```
+
+
+
+## 0x06 Fence
+
+在Android Graphic Stack中有很多的fence，这些fence是为了同步CPU、GPU、DPU工作的。因为在显示pipeline中很多操作都是nonblocking的，在提交任务之后立刻返回但是实际上任务在返回时可能并没有完成。
+
+### acquire_fence
+
+acquire_fence由GPU创建，随buffer一起传入SF和HWC，当acquire_fence触发时意味着，这一块buffer上GPU的绘制渲染操作已经完成，SF或者HWC可以进一步读取或者合成buffer。每个buffer都有一个
+
+> **Acquire fences** are passed along with input buffers to    the `setLayerBuffer` and `setClientTarget` calls.    These represent a pending write into the buffer and must signal before the    SurfaceFlinger or the HWC attempts to read from the associated buffer to    perform composition.
+
+### present_fence
+
+present_fence是atomic_commit之后返回给hwc的fence，HWC再将这个fence传递给SF。HWC在向DPU驱动提交需要合成显示的layer之后就返回了。然而合成显示操作可能还没有完成，因此这些layer的buffer此刻还不能够被其他程序立即使用，需要等present_fence触发之后才能使用。fence的触发意味着合成显示工作已经完成。present_fence对应整个合成显示流程只有一个
+
+> **Present fences** are returned, one per frame, as part of  the call to `presentDisplay`. Present fences represent when the  composition of this frame has completed, or alternately, when the  composition result of the prior frame is no longer needed. For physical  displays, `presentDisplay` returns present fences when the  current frame appears on the screen. After present fences are returned,  it's safe to write to the SurfaceFlinger target buffer again, if  applicable. For virtual displays, present fences are returned when it's  safe to read from the output buffer.
+
+### release_fence
+
+release_fence对于每一个layer都有一个，他代表这个layer中的buffer是否已经不在被HWC使用，其他程序能否对这个buffer开始新一轮绘制渲染
+
+> **Release fences** are retrieved after the call to  `presentDisplay` using the `getReleaseFences` call.  These represent a pending read from the previous buffer on the same layer. A  release fence signals when the HWC is no longer using the previous buffer  because the current buffer has replaced the previous buffer on the display.  Release fences are passed back to the app along with the previous buffers that  will be replaced during the current composition. The app must wait until a  release fence signals before writing new contents into the buffer that  was returned to them.
+
+Google HWC中似乎将presentfence直接作为每个layer的releasefence
+
+```cpp
+auto HwcDisplay::PresentStagedComposition(
+    SharedFd &out_present_fence, std::vector<ReleaseFence> &out_release_fences)
+    -> bool {
+  if (IsInHeadlessMode()) {
+    return true;
+  }
+  HWC2::Error ret{};
+
+  ++total_stats_.total_frames_;
+
+  AtomicCommitArgs a_args{};
+  ret = CreateComposition(a_args);
+
+  if (ret != HWC2::Error::None)
+    ++total_stats_.failed_kms_present_;
+
+  if (ret == HWC2::Error::BadLayer) {
+    // Can we really have no client or device layers?
+    return true;
+  }
+  if (ret != HWC2::Error::None)
+    return false;
+
+  out_present_fence = a_args.out_fence;
+
+  // Reset the color matrix so we don't apply it over and over again.
+  color_matrix_ = {};
+
+  ++frame_no_;
+
+  if (!out_present_fence) {
+    return true;
+  }
+
+  for (auto &l : layers_) {
+    if (l.second.GetPriorBufferScanOutFlag()) {
+      out_release_fences.emplace_back(l.first, out_present_fence);
+    }
+  }
+
+  return true;
+}
+```
+
+
+
 ## 0x05 Q&A
 
 1. **为什么 GPU 合成 (Client Composition) 最终只有一个 ClientLayer？**SurfaceFlinger 只会把合成好的这一个 Framebuffer 交回给 HWC，对 HWC 来说，不需要知道 GPU 合成内部有几个 Layer。随后这个返回的layer会和其他的硬件合成layer一起合成，这个clientlayer也会占用一个plane
